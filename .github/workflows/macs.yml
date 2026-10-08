@@ -1,4 +1,6 @@
-# Keeps MACS Macs serving tor-mac (mac.py) behind the tunnel at https://mac.billybishop4-workers.xyz: each one starts its
+# Keeps MACS Macs serving tor-mac (mac.py): each behind its slot's own address (https://mac-<slot>.billybishop4-workers.xyz,
+# for a caller to spread its work over them) and all behind https://mac.billybishop4-workers.xyz (whichever is up; but
+# Cloudflare sends a caller's requests to the one nearest it, not around them all). Each one starts its
 # own replacement (a run for the same slot) before GitHub's 6-hour limit and hands over to it; the keeper, every 30
 # minutes, starts any slot that isn't running (the first time, or after one failed).
 name: macs
@@ -45,6 +47,7 @@ jobs:
         env:
           MAC_KEY: ${{ secrets.MAC_KEY }}
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          SLOT_TUNNEL_TOKEN: ${{ secrets[format('TUNNEL_TOKEN_{0}', inputs.slot)] }}
           GH_TOKEN: ${{ github.token }}
           SLOT: ${{ inputs.slot }}
         run: |
@@ -53,11 +56,13 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/healthz > /dev/null && break; sleep 1; done
           cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$TUNNEL_TOKEN" > cf.log 2>&1 &
           CF=$!
+          cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$SLOT_TUNNEL_TOKEN" > cf-slot.log 2>&1 &
+          CF2=$!
           until [ "$SECONDS" -ge 20700 ]; do   # 5 h 45 m, the service restarted if it stops
             sleep 30
             curl -sf --max-time 10 http://127.0.0.1:8095/healthz > /dev/null || { echo "restarting the service"; kill $SVC 2>/dev/null; start; }
           done
           gh workflow run macs.yml -R "$GITHUB_REPOSITORY" -f slot="$SLOT"
           sleep 420   # (the next one boots meanwhile)
-          kill -TERM $CF; sleep 35; kill $SVC
+          kill -TERM $CF $CF2; sleep 35; kill $SVC
           tail -5 mac.log; grep -c "" mac.log

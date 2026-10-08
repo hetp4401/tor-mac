@@ -74,7 +74,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/healthz":
-            return self.send(200, {"ok": True, "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
+            return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
                                    "done": jobs["done"], "failed": jobs["failed"], "recent": recent[-8:]})
         self.send(404, {"error": "not here"})
 
