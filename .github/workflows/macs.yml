@@ -1,0 +1,63 @@
+# Keeps MACS Macs serving tor-mac (mac.py) behind the tunnel at https://mac.billybishop4-workers.xyz: each one starts its
+# own replacement (a run for the same slot) before GitHub's 6-hour limit and hands over to it; the keeper, every 30
+# minutes, starts any slot that isn't running (the first time, or after one failed).
+name: macs
+run-name: ${{ github.event_name == 'schedule' && 'keeper' || format('mac {0}', inputs.slot) }}
+on:
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: which Mac (1 to 4)
+        required: true
+        default: "1"
+  schedule:
+    - cron: "7,37 * * * *"
+permissions:
+  actions: write
+  contents: read
+env:
+  MACS: 4
+jobs:
+  keeper:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: start the Macs that aren't running
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          up=$(gh run list -R "$GITHUB_REPOSITORY" --workflow macs.yml --limit 100 --json displayTitle,status \
+               -q '.[] | select(.status != "completed") | .displayTitle')
+          for slot in $(seq 1 "$MACS"); do
+            echo "$up" | grep -qx "mac $slot" || { echo "starting mac $slot"; gh workflow run macs.yml -R "$GITHUB_REPOSITORY" -f slot="$slot"; }
+          done
+  mac:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+      - name: tools
+        run: |
+          brew install ffmpeg cloudflared > /tmp/brew.log 2>&1 || { tail -30 /tmp/brew.log; exit 1; }
+          ffmpeg -hide_banner -encoders | grep h264_videotoolbox
+      - name: serve, then hand over to the next Mac for this slot
+        env:
+          MAC_KEY: ${{ secrets.MAC_KEY }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          SLOT: ${{ inputs.slot }}
+        run: |
+          start() { python3 mac.py >> mac.log 2>&1 & SVC=$!; }
+          start
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/healthz > /dev/null && break; sleep 1; done
+          cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$TUNNEL_TOKEN" > cf.log 2>&1 &
+          CF=$!
+          until [ "$SECONDS" -ge 20700 ]; do   # 5 h 45 m, the service restarted if it stops
+            sleep 30
+            curl -sf --max-time 10 http://127.0.0.1:8095/healthz > /dev/null || { echo "restarting the service"; kill $SVC 2>/dev/null; start; }
+          done
+          gh workflow run macs.yml -R "$GITHUB_REPOSITORY" -f slot="$SLOT"
+          sleep 420   # (the next one boots meanwhile)
+          kill -TERM $CF; sleep 35; kill $SVC
+          tail -5 mac.log; grep -c "" mac.log
