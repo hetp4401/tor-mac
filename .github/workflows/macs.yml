@@ -60,9 +60,11 @@ jobs:
           CF2=$!
           until [ "$SECONDS" -ge 20700 ]; do   # 5 h 45 m, the service restarted if it stops
             sleep 30
-            curl -sf --max-time 10 http://127.0.0.1:8095/healthz > /dev/null || { echo "restarting the service"; kill $SVC 2>/dev/null; start; }
+            curl -sf --max-time 10 http://127.0.0.1:8095/healthz > /dev/null || { echo "restarting the service"; kill -9 $SVC 2>/dev/null; start; }
           done
           gh workflow run macs.yml -R "$GITHUB_REPOSITORY" -f slot="$SLOT"
           sleep 420   # (the next one boots meanwhile)
-          kill -TERM $CF $CF2; sleep 35; kill $SVC
+          kill -TERM $CF $CF2; sleep 35   # (the tunnels first: new pieces go to the next Mac, those under way get 30 s)
+          kill -TERM $SVC                   # (then the service: it finishes any it still has, and stops)
+          for i in $(seq 1 130); do kill -0 $SVC 2>/dev/null || break; sleep 1; done; kill -9 $SVC 2>/dev/null
           tail -5 mac.log; grep -c "" mac.log
