@@ -98,6 +98,7 @@ def run(cmd, body, conn, timeout=120):
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = 60  # (a body that stops coming (its caller went; the tunnel kept the connection open): the read ends, the place is freed)
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *a):
@@ -140,11 +141,18 @@ class Handler(BaseHTTPRequestHandler):
             if not busy:
                 jobs["n"] += 1
         if busy:
-            self.rfile.read(size)  # (the connection stays usable)
+            self.close_connection = True  # (its body unread: the connection isn't used again)
             return self.send(503, {"error": busy})
         try:
             t0 = time.time()
-            body = self.rfile.read(size)
+            try:
+                body = self.rfile.read(size)
+            except OSError:
+                body = b""
+            if len(body) < size:  # (the caller went while sending: nothing to make)
+                jobs["ended"] += 1
+                self.close_connection = True
+                return
             t1 = time.time()
             out = run(command(t, l, s, a, hdr, w), body, self.connection)
             took = time.time() - t1
