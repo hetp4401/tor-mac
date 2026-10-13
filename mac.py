@@ -1,11 +1,12 @@
 """tor-mac: a transcode service on Apple Silicon (GitHub's macOS runners), behind one Cloudflare tunnel address that
 every running Mac is a connector of (a Mac that goes is skipped; the others answer).
 
-POST /convert?t=&l=&s=&a=&h=&w=&p=  (header X-Mac-Key)  body: a Matroska file's header and one piece's clusters
+POST /convert?t=&l=&s=&a=&h=&w=&p=&k=  (header X-Mac-Key)  body: a Matroska file's header and one piece's clusters
   -> that piece, 1080p H.264 + AAC stereo in MPEG-TS, timestamped as the tor app's pieces are (TS_BASE + its time in
      the film): t = its start and l = its length (seconds, in the source's timestamps from s, its first), a = the audio
      stream to keep (-1: none), h = HDR (tone-mapped to SDR), w = the source's width (wider than 1920: scaled down),
      p = 0 when a player waits on it (it may take a place past MAX_JOBS).
+     k = 1: a keyframe every second of it (a run of one-second pieces made at once, split by the caller at those).
      Made on the Mac's media engine (VideoToolbox: decode, scale and HDR -> SDR, encode); elsewhere (tests) on the CPU.
      A caller that goes meanwhile (its player went elsewhere, another Mac answered first) has its conversion ended.
 GET /healthz -> {ok, jobs, max, engine, host, draining}
@@ -22,7 +23,7 @@ MAX_JOBS = int(os.environ.get("MAX_JOBS", "3"))
 MAX_BODY = 200 * 2**20
 DRAIN_MAX = 120  # seconds the conversions under way are given to finish on SIGTERM
 TS_BASE = 10  # (as tor.py's)
-jobs = {"n": 0, "done": 0, "failed": 0, "ended": 0, "draining": False}
+jobs = {"n": 0, "done": 0, "failed": 0, "ended": 0, "stuck": 0, "draining": False}
 lock = threading.Lock()
 recent = []
 
@@ -38,8 +39,9 @@ def engine():
 ENGINE = engine()
 
 
-def command(t, l, s, a, hdr, w):
+def command(t, l, s, a, hdr, w, k=0):
     end = t + l
+    keys = f"expr:gte(t,n_forced*{k})" if k else "0"  # (the first frame's, and every k seconds of the piece)
     if ENGINE == "videotoolbox":
         vf = [f"trim=start={t:.3f}:end={end:.3f}"]
         scale = ["w=1920", "h=trunc(ih*1920/iw/2)*2"] if w > 1920 else []
@@ -57,7 +59,7 @@ def command(t, l, s, a, hdr, w):
         venc = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-profile:v", "high", "-level", "4.1"]
     return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + inp + ["-copyts", "-i", "pipe:0", "-map", "0:v:0"] +
             (["-map", f"0:{a}", "-af", f"atrim=start={t:.3f}:end={end:.3f}", "-c:a", "aac", "-ac", "2", "-b:a", "192k"] if a >= 0 else []) +
-            ["-vf", ",".join(vf)] + venc + ["-force_key_frames", "0", "-output_ts_offset", f"{TS_BASE - s:.3f}",
+            ["-vf", ",".join(vf)] + venc + ["-force_key_frames", keys, "-output_ts_offset", f"{TS_BASE - s:.3f}",
              "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", "pipe:1"])
 
 
@@ -80,7 +82,10 @@ def run(cmd, body, conn, timeout=120):
             got["out"], got["err"] = p.communicate(body, timeout=timeout)
         except subprocess.TimeoutExpired:
             p.kill()
-            got["out"], got["err"] = p.communicate()
+            try:
+                got["out"], got["err"] = p.communicate(timeout=10)
+            except subprocess.TimeoutExpired:  # (one that won't die: left behind, see below)
+                got["err"] = b"ffmpeg would not die"
             got["late"] = True
         except Exception as err:
             p.kill()
@@ -91,10 +96,22 @@ def run(cmd, body, conn, timeout=120):
         talker.join(0.2)
         if talker.is_alive() and gone(conn):
             p.kill()
-            talker.join()
+            talker.join(10)
+            if talker.is_alive():
+                stuck()
             return None
-    p.wait()
+    try:
+        p.wait(timeout=10)
+    except subprocess.TimeoutExpired:  # (killed, and still there: a hung encoder; its place isn't kept for it)
+        stuck()
     return p.returncode, got.get("out") or b"", got.get("err") or b"", bool(got.get("late"))
+
+
+def stuck():
+    """An ffmpeg that was killed and won't go: counted (see /healthz), its job's place freed all the same."""
+    with lock:
+        jobs["stuck"] += 1
+    print(f"an ffmpeg won't die: {jobs['stuck']} left behind", flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -117,7 +134,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.split("?")[0] == "/healthz":
             return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
-                                   "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "recent": recent[-8:]})
+                                   "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "stuck": jobs["stuck"],
+                                   "recent": recent[-8:]})
         self.send(404, {"error": "not here"})
 
     def do_POST(self):
@@ -131,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             t, l, s = float(q["t"][0]), float(q["l"][0]), float((q.get("s") or ["0"])[0])
             a, hdr, w = int((q.get("a") or ["-1"])[0]), int((q.get("h") or ["0"])[0]), int((q.get("w") or ["0"])[0])
             waits = (q.get("p") or ["1"])[0] == "0"
+            k = int((q.get("k") or ["0"])[0])
             size = int(self.headers.get("Content-Length") or 0)
         except (KeyError, ValueError):
             return self.send(400, {"error": "t, l (s, a, h, w, p) and a body"})
@@ -154,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 return
             t1 = time.time()
-            out = run(command(t, l, s, a, hdr, w), body, self.connection)
+            out = run(command(t, l, s, a, hdr, w, k), body, self.connection)
             took = time.time() - t1
             if out is None:  # (the caller went: no one to answer)
                 jobs["ended"] += 1
