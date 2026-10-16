@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       slot:
-        description: which Mac (1 to 4)
+        description: which Mac (1 to 3; the fourth runner builds iOS apps)
         required: true
         default: "1"
   schedule:
@@ -18,7 +18,7 @@ permissions:
   actions: write
   contents: read
 env:
-  MACS: 4
+  MACS: 3
 jobs:
   keeper:
     if: github.event_name == 'schedule'
