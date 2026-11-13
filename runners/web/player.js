@@ -176,7 +176,7 @@ function snapFrame() {  // (the frame on screen kept as a picture while the same
   } catch (e) { c.classList.add("hidden"); }
 }
 const nextWords = (ep) => "Next: S" + ep.s + ":E" + ep.e + (ep.name ? " · " + ep.name : "");
-const WHY = {retry: "Reconnecting…", again: "Trying again…", "switch": "Switching to the converted version…"};
+const WHY = {retry: "Reconnecting…", again: "Trying again…", "switch": "Switching to the converted stream…"};
 function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this is, else the title page's own (copied); why: "retry",
   const prev = playing, prevT = prev && mediaFor === prev ? vid.currentTime : 0;
   if (prev) { savePos(true); if (why) snapFrame(); }
@@ -207,7 +207,10 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   ["pAudio", "dAudio", "pNextBtn", "dNext", "pNext"].forEach((id) => byId(id).classList.add("hidden"));
   closeSheet(true, true);
   paintTitles(title, ep);
-  byId("pVer").innerHTML = '<div class="vk">' + kindLabel(mine.kind) + '</div><div class="vs">' + sizeLine(mine.info) + "</div>" + fileName(mine.file);
+  const mode = /^converted/i.test(mine.kind) ? "converted" : mine.kind.split(" · ")[0], size = /\b\d+(?:\.\d+)?\s*[KMGT]B\b/i.exec(mine.info);
+  byId("pVer").innerHTML = '<div class="vk">' + kindLabel(mode) + '</div>' + (size ? '<div class="vs">' + sizeLine(size[0]) + '</div>' : '');
+  byId("pFileDetails").innerHTML = '<div class="vk">' + kindLabel(mine.kind) + '</div><div class="vs">' + sizeLine(mine.info) + '</div><div class="stream-filename">' + esc(mine.file) + "</div>";
+  if (!why || why === "next") byId("pStreamDetails").open = false;
   const saved = (posStore()[posKey(mine)] || {}).t || 0;
   mine.from = why && why !== "next" && prevT > 1 ? prevT : saved > 15 ? saved - 5 : 0;  // (a reconnect goes on from the very place; a resume a
   setUi("start");
@@ -260,10 +263,10 @@ function startPlay(mine) {  // (play; refused (nothing has allowed sound yet): t
     if (mine.native) { byId("pNativePlay").classList.remove("hidden"); nativeNotice("Tap Play to start the video."); }
   });
 }
-const HLSWHY = {manifestLoadError: "The service didn't send this version's playlist.", manifestLoadTimeOut: "The service took too long to answer.",
-                manifestParsingError: "This version's playlist is broken.", levelLoadError: "A playlist of this version didn't load.",
+const HLSWHY = {manifestLoadError: "The service didn't send this stream's playlist.", manifestLoadTimeOut: "The service took too long to answer.",
+                manifestParsingError: "This stream's playlist is broken.", levelLoadError: "This stream's playlist didn't load.",
                 fragLoadError: "A piece of it didn't arrive.", bufferAppendError: "This browser couldn't decode a piece of it.",
-                manifestIncompatibleCodecsError: "This browser can't decode this version."};
+                manifestIncompatibleCodecsError: "This browser can't decode this stream."};
 function wireHls(h, mine) {
   let recovered = 0;
   h.on(Hls.Events.AUDIO_TRACKS_UPDATED, showLangs);
@@ -285,7 +288,7 @@ function wireHls(h, mine) {
       try { why = d.response.text ? JSON.parse(d.response.text).error || "" : ""; } catch (e) {}
       const ahead = bufferedAhead(), t = d.frag && d.frag.start;
       mine.stopped = true;
-      httpFail = ["Couldn't load this part", (why ? why + ". " : "The service couldn't get this part (" + code + "). ") + "Try again, or pick another version."];
+      httpFail = ["Couldn't load this part", (why ? why + ". " : "The service couldn't get this part (" + code + "). ") + "Try again, or pick another stream."];
       if (ahead > 10 && !mine.bgRound) { mine.bgRound = true; setTimeout(() => { if (playing === mine && hls === h && mine.stopped && uiState !== "error") { mine.stopped = false; h.startLoad(); } }, 4000); return; }
       if (vid.paused || ahead < 1) failPlay(httpFail[0], httpFail[1], "http");
       if (t != null) [20000, 45000].forEach((ms) => setTimeout(() => { if (playing === mine && errKind === "http" && !document.hidden) hint(t + .1); }, ms));  // (behind the
@@ -310,7 +313,7 @@ function wireHls(h, mine) {
       if (twin("the Original didn't start", true)) return;
     }
     if (twin()) return;
-    failPlay("Couldn't play this version", (why ? why + ". " : HLSWHY[d.details] ? HLSWHY[d.details] + " " : "The stream stopped. ") + "Try again, or pick another version.");
+    failPlay("Couldn't play this stream", (why ? why + ". " : HLSWHY[d.details] ? HLSWHY[d.details] + " " : "The stream stopped. ") + "Try again, or pick another stream.");
   });
 }
 function failPlay(title, detail, kind) {  // (an error: a card that stays until it's acted on; the film paused, its loading stopped)
@@ -353,7 +356,7 @@ function elsewhere(d) {  // (a playlist or piece the master sent to a copy's own
 function replay(mine) {  // (the same version once more, from where it was, twice at most: the fleet picks its reader again)
   if (!playing || playing !== mine) return;
   const n = (mine.replays || 0) + 1;
-  if (n > 2) { failPlay("Couldn't keep playing this version", "The connection stopped twice. Try again, or pick another version."); return; }
+  if (n > 2) { failPlay("Couldn't keep playing this stream", "The connection stopped twice. Try again, or pick another stream."); return; }
   play(mine.url, mine.kind, mine.file, mine.info, mine.title, mine.ep, "retry");
   playing.replays = n;
 }
@@ -404,7 +407,6 @@ function origFailed(p) {  // (Safari's own player gave up on an Original: the fl
   });
 }
 function teardown() {  // (the stream let go: hls.js destroyed, the element emptied)
-  cancelNativeSeekHint();
   teardownN++;
   mediaFor = null;
   if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
@@ -413,7 +415,6 @@ function teardown() {  // (the stream let go: hls.js destroyed, the element empt
 function stopPlayer() {  // (leaving: the place kept, the film paused at once; the stream let go once the page under has painted)
   savePos(true);
   playing = null;
-  cancelNativeSeekHint();
   releaseLandscape();
   if (document.pictureInPictureElement === vid && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
   else if (vid.webkitPresentationMode === "picture-in-picture" && vid.webkitSetPresentationMode) { try { vid.webkitSetPresentationMode("inline"); } catch (e) {} }
@@ -484,10 +485,10 @@ function playNext() {  // (the next episode in the same kind of version as this 
   versions("series", n.id).then((r) => {
     if (playing !== p) return;
     const list = r.streams || [], pick = list.find((s) => kindOf(s) === p.kind) || list[0];
-    if (!pick) { nextFailed("No versions of the next episode"); return; }
+    if (!pick) { nextFailed("No streams for the next episode"); return; }
     const lines = (pick.title || "").split("\n");
     play(pick.url, kindOf(pick), lines[0], lines[1] || "", p.title, ep, "next");
-  }).catch((e) => { if (playing === p) nextFailed("Couldn't list the next episode's versions: " + e.message); });
+  }).catch((e) => { if (playing === p) nextFailed("Couldn't list the next episode's streams: " + e.message); });
 }
 function nextFailed(msg) {
   nexting = false;
@@ -668,48 +669,6 @@ function hint(t) {  // (the reader may ready the piece at t before the player as
   hintAt = now;
   const m = /^(.*\/hls\/[^/]+\/)[^/?]+\.m3u8\?r=(\d+)/.exec(hls.levels[0].details.url || "");
   if (m) fetch(m[1] + "h" + i + "?r=" + m[2]).catch(() => {});
-}
-// Native HLS hides its playlist index from JavaScript. A time-based hint lets
-// the existing reader prioritize a cold seek without fetching a second playlist.
-const nativeSeekHint = {timer: 0, timeout: 0, controller: null, at: -1e9, session: null, sent: ""};
-function cancelNativeSeekHint() {
-  clearTimeout(nativeSeekHint.timer);
-  clearTimeout(nativeSeekHint.timeout);
-  if (nativeSeekHint.controller) nativeSeekHint.controller.abort();
-  Object.assign(nativeSeekHint, {timer: 0, timeout: 0, controller: null, at: -1e9, session: null, sent: ""});
-}
-function hintNativeSeek(t) {
-  if (!playing || !playing.native || !live() || !Number.isFinite(t) || t < 0 || isBuffered(t)) return;
-  let url;
-  try { url = new URL(playing.url, location.href); } catch (_) { return; }
-  const match = /^(.*\/hls\/[^/]+\/)(index|orig)\.m3u8$/.exec(url.pathname);
-  if (!match) return;  // Direct browser-ready files do not use the HLS reader.
-  const mine = playing, reader = url.searchParams.get("r");
-  url.pathname = match[1] + "seek";
-  url.search = "";
-  url.searchParams.set("t", t.toFixed(3));
-  if (match[2] === "orig") url.searchParams.set("v", "orig");
-  if (reader && /^[1-9]\d*$/.test(reader)) url.searchParams.set("r", reader);
-  if (nativeSeekHint.session !== mine) { cancelNativeSeekHint(); nativeSeekHint.session = mine; }
-  const target = url.href, now = performance.now();
-  if (target === nativeSeekHint.sent && now - nativeSeekHint.at < 1000) return;
-  clearTimeout(nativeSeekHint.timer);
-  const send = () => {
-    nativeSeekHint.timer = 0;
-    if (playing !== mine || !live() || isBuffered(t)) return;
-    clearTimeout(nativeSeekHint.timeout);
-    if (nativeSeekHint.controller) nativeSeekHint.controller.abort();
-    const controller = typeof AbortController === "function" ? new AbortController() : null;
-    nativeSeekHint.controller = controller;
-    nativeSeekHint.at = performance.now();
-    nativeSeekHint.sent = target;
-    nativeSeekHint.timeout = controller ? setTimeout(() => controller.abort(), 5000) : 0;
-    fetch(target, {cache: "no-store", ...(controller ? {signal: controller.signal} : {})}).catch(() => {}).then(() => {
-      if (nativeSeekHint.controller === controller) { clearTimeout(nativeSeekHint.timeout); nativeSeekHint.timeout = 0; nativeSeekHint.controller = null; }
-    });
-  };
-  const wait = Math.max(0, 334 - (now - nativeSeekHint.at));
-  if (wait) nativeSeekHint.timer = setTimeout(send, wait); else send();
 }
 let jumpTo = 0, jumpT = null, jumpAt = -1e9;
 function jump(d) {  // (±10 s: the first seeks at once; more within 400 ms of a seek add up, applied 150 ms after the last)
@@ -1080,7 +1039,7 @@ function audioItems() {  // (each sound track: its language, the rest of it smal
 }
 function moreItems() {
   return '<button class="mi" role="menuitem" data-act="copy">' + GLYPH.link + '<span class="tx">Copy stream link</span></button>' +
-    '<button class="mi" role="menuitem" data-act="versions">' + GLYPH.versions + '<span class="tx">Other versions</span></button><hr><div class="h">Speed</div><div class="speeds">' +
+    '<button class="mi" role="menuitem" data-act="versions">' + GLYPH.versions + '<span class="tx">Streams</span></button><hr><div class="h">Speed</div><div class="speeds">' +
     [0.75, 1, 1.25, 1.5, 2].map((r) => '<button role="menuitemradio" aria-checked="' + (r === rate) + '" class="' + (r === rate ? "on" : "") + '" data-rate="' + r + '">' + r + "×</button>").join("") + "</div>";
 }
 byId("pMenu").addEventListener("click", (e) => {
@@ -1349,7 +1308,6 @@ vid.addEventListener("seeking", () => {
   if (!live()) return;
   const t = vid.currentTime, s = snap(t);
   if (s !== t) { vid.currentTime = s; return; }  // (the nested 'seeking' does the rest)
-  if (nativePlayer()) hintNativeSeek(t);
   const mine = seekMine;
   seekMine = false;
   if (mine && playing.stopped && hls) { playing.stopped = false; httpFail = null; try { hls.startLoad(); } catch (e) {} }  // (elsewhere: load again)
@@ -1389,7 +1347,7 @@ vid.addEventListener("playing", () => {
   if (!p.started) {
     p.started = true;
     if (p.from > 0 && !p.why) showRestart();
-    if (p.twinned) say("Playing the converted version: " + p.twinned);
+    if (p.twinned) say("Playing the converted stream: " + p.twinned);
   }
 });
 vid.addEventListener("pause", () => {
@@ -1440,7 +1398,7 @@ vid.addEventListener("error", () => {  // (a file: once more from where it was, 
     startPlay(p);
     return;
   }
-  if (!twin()) failPlay("Couldn't play this version", (vid.error && vid.error.code === 4 ? "The browser couldn't open it." : "The stream broke off.") + " Try again, or pick another version.");
+  if (!twin()) failPlay("Couldn't play this stream", (vid.error && vid.error.code === 4 ? "The browser couldn't open it." : "The stream broke off.") + " Try again, or pick another stream.");
 });
 
 const scrolls = {};

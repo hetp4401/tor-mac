@@ -82,7 +82,7 @@ function clientContext({playing=null,pip=false,secure=true,waiting=true}={}) {
   const winEvents={},swEvents={},videoEvents={},regEvents={}, elements={};let reloads=0,prompts=0;
   const control={postMessage:data=>control.messages.push(data),messages:[]};
   const reg={waiting:waiting?control:null,addEventListener:(type,fn)=>regEvents[type]=fn};
-  const element=()=>({hidden:false,onclick:null,attributes:{},setAttribute(k,v){this.attributes[k]=v;},querySelector(q){return this.children[q]||null;},children:{},set innerHTML(value){this.html=value;this.children={'.pwa-close':element()};if(value.includes('class="pwa-action"'))this.children['.pwa-action']=element();},get innerHTML(){return this.html||'';}});
+  const element=()=>({hidden:false,onclick:null,classList:{toggle(){}},attributes:{},setAttribute(k,v){this.attributes[k]=v;},querySelector(q){return this.children[q]||null;},children:{},set innerHTML(value){this.html=value;this.children={'.pwa-close':element()};if(value.includes('class="pwa-action"'))this.children['.pwa-action']=element();},get innerHTML(){return this.html||'';}});
   elements.pwaInstall=element();elements.vid={paused:true,ended:false,webkitPresentationMode:pip?'picture-in-picture':'inline',addEventListener:(type,fn)=>videoEvents[type]=fn};
   let notice;
   const nav={vendor:'Apple Computer, Inc.',platform:'MacIntel',maxTouchPoints:0,userAgent:'Version/18 Safari/605',onLine:true,serviceWorker:{addEventListener:(type,fn)=>swEvents[type]=fn,register:async()=>reg}};
@@ -101,7 +101,7 @@ test('an approved update is deferred if playback starts before activation',async
   assert.equal(c.control.messages.length,1);
   c.context.playing={url:'movie'};c.reg.waiting=null;c.swEvents.controllerchange();assert.equal(c.reloads,0);
   c.context.playing=null;c.winEvents.hashchange();await flush();
-  assert.match(c.notice.innerHTML,/Ready to finish updating/);c.notice.querySelector('.pwa-action').onclick();assert.equal(c.reloads,1);
+  assert.match(c.notice.innerHTML,/Update ready/);c.notice.querySelector('.pwa-action').onclick();assert.equal(c.reloads,1);
 });
 test('native Picture in Picture suppresses update UI without relying on current route',async()=>{
   const c=clientContext({pip:true});await flush();assert.equal(c.notice.hidden,true);assert.equal(c.reloads,0);

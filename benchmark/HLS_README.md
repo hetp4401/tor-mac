@@ -1,5 +1,7 @@
 # Public HLS cold-start measurements
 
+Historical experiment: production playback was restored to Tor v91 on November 13 after reported regressions. Source delegation, metadata windows, cold-priority dispatch and native seek hints are not active. Results below describe the previous experiments.
+
 These measurements exercise public HLS master, video/audio playlists, parallel first video/audio segments, a first seek, and the following three segment pairs. They use generated media only, through the real Runners and Mac Cloudflare tunnels. The player sends no internal `X-Tor-Key` header. MPEG-TS null keepalive packets do not count as the first useful media byte. The ordinary legacy compact-upload path and unchanged VideoToolbox encoder settings remain in use.
 
 Each controlled trial restarts only the isolated `tor-cold-bench` Python service, checks its exact health code and Runners version, and uses a new source identity. Runners host 26 and Mac slot 4 are held constant. The upstream synthetic fixture is already on disk; this measures a cold Tor source/output cache, not upstream media generation. Mac worker revision is `b88f8ef8d90e697c9a10df23ff8bc910b0f1bcac` (isolated workflow run 43384884553). This controlled series does not target production playback or Mac slots 1–3; a separate deployment smoke check is recorded below.

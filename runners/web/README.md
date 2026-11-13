@@ -52,11 +52,13 @@ the device’s reduced-motion preference.
 
 ## Playback and source selection
 
-Available versions form one list, sorted numerically by source-file size;
+The title page uses the label Streams. Opening a movie automatically fetches its
+streams; opening an episode loads that episode's streams in its sheet. There is
+no extra selection step. The list is sorted numerically by source-file size;
 unknown sizes come last. The saved ordering can be largest or smallest first. The sticky
 count stays visible as more results load while scrolling; there is no Show more step.
-Badges distinguish Original, As is and Converted sources.
-Source size describes the source file, not the final converted stream size. A sticky toolbar shows loaded and total playback options. IntersectionObserver appends bounded batches near the bottom of a page or episode sheet; hidden lists stop observing. Keyboard navigation can load the next batch, and browsers without observers retain a button fallback.
+Badges distinguish Original, As is and Converted sources. Rows show mode, concise source quality and size; full filenames stay available in accessible labels. The title’s plot and credits are collapsed under About. Player source details and Copy link sit in a disclosure, leaving playback actions visible.
+Source size describes the source file, not the final converted stream size. A sticky toolbar shows loaded and total streams. IntersectionObserver appends bounded batches near the bottom of a page or episode sheet; hidden lists stop observing. Keyboard navigation can load the next batch, and browsers without observers retain a button fallback.
 
 Apple Safari uses the browser's native video controls and prefers native HLS
 when supported. Custom gesture surfaces and controls are disabled in this mode
@@ -67,7 +69,12 @@ when their APIs are available. Other supported browsers retain the custom
 player and hls.js fallback. Native fullscreen exits and PiP browsing preserve
 the current playback session where supported. Touch playback requests fullscreen during the original tap and attempts landscape orientation only where the browser supports it; exiting, PiP and navigation release the lock. Safari may keep rotation under OS control.
 
-Native HLS seeks send a throttled, cancellable time hint to the existing reader. The server maps cached metadata to the target piece and prioritizes that video/audio pair; it never starts a new source probe just for a hint. Unknown or inactive sources are skipped. This restores early seek preparation without downloading playlists twice; it is not a measured latency guarantee.
+The streaming backend was restored to the saved v91 Mac-to-Tor behavior for
+buffering, seeking and Mac dispatch. The Frame interface and native Apple player
+remain in place. Native HLS now relies on the browser's media requests; the added
+time-based `/hls/<token>/seek` hint endpoint and client requests were removed.
+The pre-existing hls.js piece-hint path remains unchanged. No latency improvement
+is claimed for this rollback without a playback measurement.
 
 Chromium desktop/mobile viewport checks verify layout and application flows.
 Automated tests verify lifecycle decisions using simulated browser APIs. Neither
@@ -95,7 +102,7 @@ activation is completing, reload is deferred and offered later. Worker
 activation removes only application-owned old caches (including legacy `fleet-*` caches), retaining a previously usable
 shell when a new shell fetch failed. It does not clear library/progress data.
 
-When changing cached PWA assets, bump `VERSION` in `pwa/sw.js` and keep icon URL
+When changing cached PWA assets, bump `VERSION` in `pwa/sw.js` and the registration release query in `pwa/client.js` (the legacy hostname’s CDN caches the script). Keep icon URL
 versions consistent across `head.html`, the manifest and worker precache list.
 The current icon URLs use `?v=4`. Icons can be regenerated on macOS with:
 

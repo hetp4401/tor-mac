@@ -49,7 +49,7 @@
     <div class="phud" id="pHud" aria-hidden="true"></div>
     <button class="gp presume hidden" id="pRestart"><span>Start from the beginning</span></button>
     <div class="perr hidden" id="pErr" role="alert"><b id="pErrT"></b><p id="pErrP"></p>
-      <div class="acts"><button class="pri" id="pRetry">Try again</button><button id="pOther">Other versions</button></div></div>
+      <div class="acts"><button class="pri" id="pRetry">Try again</button><button id="pOther">Streams</button></div></div>
     <div class="pupn hidden" id="pUpn"><img id="pUpnImg" alt=""><div class="t"><small>Next episode</small><b id="pUpnT"></b>
       <button class="upgo" id="pUpnGo"><span>Play</span></button></div><button class="x" id="pUpnX" aria-label="Dismiss"></button></div>
     <div class="pmenu" id="pMenu" role="menu"></div>
@@ -67,9 +67,15 @@
     <div class="dacts">
       <button class="db acc hidden" id="dNext"><span>Next episode</span></button>
       <div class="db hidden" id="dAudio"><span class="nm" id="dAudioName"></span><select id="pLang" aria-label="Audio"></select></div>
-      <button class="db" id="dCopy" aria-label="Copy stream link"><span>Copy link</span></button>
     </div>
-    <div class="pver" id="pVerBox"><div class="hd"><div class="lbl">Playing</div><button class="chg" id="pChange">Other versions</button></div><div id="pVer"></div></div>
+    <div class="pver" id="pVerBox">
+      <div class="hd"><div id="pVer"></div><button class="chg" id="pChange">Streams</button></div>
+      <details class="stream-details" id="pStreamDetails">
+        <summary>Stream details</summary>
+        <div id="pFileDetails"></div>
+        <button class="db" id="dCopy" aria-label="Copy stream link"><span>Copy link</span></button>
+      </details>
+    </div>
     <div class="upnext hidden" id="pNext"><div class="lbl">Up next</div><div id="pNextEp"></div></div>
   </div>
 </section>

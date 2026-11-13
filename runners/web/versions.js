@@ -3,7 +3,7 @@ const SECT = {  // (the fleet's section names: a flat pictogram of the same thin
   "▶ As is": ["As is", "The source file, played directly without conversion.", "asis", "asis"],
   "🌐 Browser 1080p": ["Converted", "Converted to browser-friendly H.264 video and stereo audio.", "globe", "conv"],
 };
-const sectOf = (name) => SECT[name] || [String(name).replace(/^[^A-Za-z0-9]+/, "") || "Versions", "", /Browser|onvert/.test(name) ? "globe" : "film", "other"];
+const sectOf = (name) => SECT[name] || [String(name).replace(/^[^A-Za-z0-9]+/, "") || "Streams", "", /Browser|onvert/.test(name) ? "globe" : "film", "other"];
 const sectLabel = (name) => ICON[sectOf(name)[2]] + esc(sectOf(name)[0]);
 function kindOf(s) { const n = (s.name || "").split("\n"); return n[0] + " · " + (s.f ? s.f.h : (n[1] || "")); }  // (the file probed: its own words)
 function nameCut(f) {  // (where a long name's end starts: its last 15 to 26 characters, from a separator)
@@ -48,10 +48,16 @@ function sizeLine(info) {  // ("💾 83.6 GB · as on the source…": the size i
 }
 const RELEASES = [[/remux/i, "Remux"], [/blu-?ray|\bbd(rip)?\b|\bbrrip\b|\buhd\b/i, "Blu-ray encode"], [/web-?dl|\bweb\b(?!-?rip)/i, "WEB-DL"], [/web-?rip/i, "WEB rip"],
                   [/hdtv|dvd/i, "TV/DVD"]];  // (the kinds of release the fleet sorts each section by, best first; tor.py's quality())
-function verHead(label, file) {  // ("Remux · 4K HDR": the kind of release from the file's name, then the picture from the fleet's label)
-  const r = RELEASES.find((x) => x[0].test(file || "")), pict = String(label || "").replace(/^from /, "").replace(/ ?(Blu-ray|plays in a browser)/g, "").trim();
-  return [r ? r[1] : "", pict === "other" ? "" : pict].filter(Boolean).join(" · ") || label || "";
+function verHead(label, file) {
+  const resolution = (text) => {
+    const match = [[/2160p|\b4k\b|\buhd\b/i, "4K"], [/1080p/i, "1080p"], [/1080i/i, "1080i"], [/720p/i, "720p"], [/576[pi]|480[pi]|\bsd\b/i, "SD"]]
+      .find(([pattern]) => pattern.test(text || ""));
+    return match ? match[1] : "";
+  };
+  const release = RELEASES.find(([pattern]) => pattern.test(file || ""));
+  return [resolution(label) || resolution(file), release ? release[1].replace(" encode", "") : ""].filter(Boolean).join(" · ");
 }
+
 function verSize(info) {  // ("17.6 GB" first; then what the fleet says of it, but not what its section's header says already)
   const m = /^💾\s*([\d.]+\s*[KMGT]B)(.*)/.exec(info || "");
   if (!m) return esc(String(info || "").replace(/^💾\s*/, ""));
@@ -89,23 +95,23 @@ function sortedVersions(list, direction) {
 }
 function verTop(s) {
   const n = (s.name || "").split("\n"), t = (s.title || "").split("\n"), kind = sourceKind(s);
-  const quality = verHead(s.f ? s.f.h : (n[1] || n[0]), t[0]);
+  const quality = verHead(s.f ? s.f.h : (n[1] || ""), t[0]);
   return '<span class="vbadge" data-kind="' + esc(kind[3]) + '" title="' + esc(kind[1]) + '">' + esc(kind[0]) + '</span>' +
-    '<span class="vquality">' + esc(quality) + '</span>' +
-    (s.f && kind[3] !== "conv" ? '<span class="vok" title="Compatibility checked">' + ICON.check + "</span>" : "");
+    (quality ? '<span class="vquality">' + esc(quality) + '</span>' : "");
 }
-function verWords(s) {
-  const t = (s.title || "").split("\n"), f = s.f;
-  if (!f) return verSize(t[1]) || "Size not available";
-  const conv = sourceKind(s)[3] === "conv", more = (conv ? [f.l] : [f.v, f.s, f.l]).filter(Boolean).join(" · ");
-  return (verSize(conv ? t[1] : (t[1] || "").split(" · ")[0]) || "Size not available") +
-    (more ? esc(" · " + more) : "") + (conv && f.c ? ' · <span class="vc">' + esc(f.c) + "</span>" : "");
+function streamSize(s) {
+  let bytes = versionBytes(s), unit = 0;
+  if (bytes === null) return "Size unknown";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  while (bytes >= 1000 && unit < units.length - 1) { bytes /= 1000; unit++; }
+  return Number(bytes.toFixed(unit ? 1 : 0)) + " " + units[unit];
 }
+function verWords(s) { return '<b>' + esc(streamSize(s)) + '</b>'; }
 function versionPlayLabel(s) {
-  const t = (s.title || "").split("\n");
-  const action = "Play " + sourceKind(s)[0];
-  return action + ": " + (t[0] || "this version") + (t[1] ? ", " + t[1].replace(/^💾\s*/, "") : "");
+  const file = (s.title || "").split("\n")[0];
+  return "Play " + sourceKind(s)[0] + ": " + (file || "this stream") + ", " + streamSize(s);
 }
+
 function versionFileUrl(s) { return new URL((s.download || s.url).replace("/dl/", "/file/"), location.href).href; }
 function verRow(s, onPick) {
   const t = (s.title || "").split("\n"), d = document.createElement("div");
@@ -113,8 +119,8 @@ function verRow(s, onPick) {
   d._source = s;
   if (s.k) d.dataset.k = s.k;
   d.dataset.kind = sourceKind(s)[3];
-  d.innerHTML = '<button class="vplay" type="button" aria-label="' + esc(versionPlayLabel(s)) + '"><span class="vt"><span class="vk">' + verTop(s) +
-    '</span><span class="vs">' + verWords(s) + "</span>" + fileName(t[0] || "") + '</span><span class="go" aria-hidden="true">' + ICON.play + '</span></button>' +
+  d.innerHTML = '<button class="vplay" type="button" aria-label="' + esc(versionPlayLabel(s)) + '" title="' + esc(t[0] || "Play stream") + '"><span class="vt"><span class="vk">' + verTop(s) +
+    '</span><span class="vs">' + verWords(s) + '</span></span><span class="go" aria-hidden="true">' + ICON.play + '</span></button>' +
     (s.download ? '<button class="dl cp" type="button" title="Copy file link" aria-label="Copy file link">' + ICON.link + '</button>' +
       '<a class="dl" href="' + esc(s.download) + '" download title="Download source file" aria-label="Download source file">' + ICON.dl + '</a>' : "");
   d.querySelector(".vplay").onclick = () => onPick(s);
@@ -122,7 +128,7 @@ function verRow(s, onPick) {
   if (copy) copy.onclick = () => copyUrl(versionFileUrl(s));
   return d;
 }
-function copyUrl(url) {  // (a version's link, to the clipboard; where that's refused (an old browser, no focus), the old way)
+function copyUrl(url) {  // (a stream's link, to the clipboard; where that's refused (an old browser, no focus), the old way)
   const old = () => {
     const t = document.createElement("textarea");
     t.value = url;
@@ -142,7 +148,7 @@ function copyUrl(url) {  // (a version's link, to the clipboard; where that's re
 function loadingVersions() {
   const row = '<div class="ver" aria-hidden="true"><div class="vt"><div class="bar" style="width:38%"></div><div class="bar" style="width:74%;margin-top:9px"></div>' +
     '<div class="bar" style="width:56%;margin-top:9px;height:10px"></div></div><span class="go"></span></div>';
-  return '<div class="vload"><div class="vsec"><div class="vsec-h"><b>Finding playback options…</b></div><p class="vsec-d">Available files will appear here, sorted by size.</p>' +
+  return '<div class="vload"><div class="vsec"><div class="vsec-h"><b>Finding streams…</b></div><p class="vsec-d">Streams appear here automatically, sorted by size.</p>' +
     '<div class="vgroup breathe">' + row.repeat(4) + "</div></div></div>";
 }
 const verId = (file, info) => file + "|" + ((String(info || "").match(/[\d.]+ ?[GM]B/) || [""])[0]);  // (a file, by its name and size: its links change)
@@ -219,16 +225,16 @@ function renderVersions(box, list, scroller, onPick, id) {
   let rows = sortedVersions(fitVersions(list), order);
   state.shown = Math.min(rows.length, Math.max(first, state.shown));
   box.innerHTML = '<div class="vtoolbar" title="File sizes refer to the source file, including converted playback."><div class="vsummary" role="status" aria-live="polite" aria-atomic="true"></div>' +
-    '<label class="vsort"><span>Size</span><select aria-label="Sort playback options by file size"><option value="largest">Largest first</option><option value="smallest">Smallest first</option></select></label></div>' +
-    '<div class="vgroup" aria-label="Playback options"></div>';
+    '<label class="vsort"><span>Size</span><select aria-label="Sort streams by file size"><option value="largest">Largest first</option><option value="smallest">Smallest first</option></select></label></div>' +
+    '<div class="vgroup" aria-label="Streams"></div>';
   const group = box.querySelector(".vgroup"), select = box.querySelector("select"), summary = box.querySelector(".vsummary");
   const automatic = typeof IntersectionObserver === "function", tail = document.createElement(automatic ? "div" : "button");
   tail.className = automatic ? "vmore-sentinel" : "vmore";
   if (automatic) { tail.setAttribute("aria-hidden", "true"); tail.style.minHeight = "1px"; }
-  else { tail.type = "button"; tail.textContent = "Load more options"; }
+  else { tail.type = "button"; tail.textContent = "Load more streams"; }
   select.value = order;
   const progress = () => {
-    summary.innerHTML = '<strong>' + state.shown + '</strong> of <strong>' + rows.length + '</strong> option' + (rows.length === 1 ? "" : "s");
+    summary.innerHTML = '<strong>' + state.shown + '</strong> of <strong>' + rows.length + '</strong> stream' + (rows.length === 1 ? "" : "s");
     if (state.shown < rows.length) group.appendChild(tail);
     else tail.remove();
   };
@@ -291,7 +297,7 @@ function loadVersions(box, type, sid, count, scroller) {
   box.dataset.sid = sid;
   box.reload = () => { if (box.dataset.sid === sid) loadVersions(box, type, sid, count, scroller); };  // (drawn again: see markUnfit)
   box.at = Date.now();
-  whenQuiet(() => loadHls().catch(() => {}), 0, 1500);  // (versions shown: a play is near; fetched and compiled once nobody has scrolled
+  whenQuiet(() => loadHls().catch(() => {}), 0, 1500);  // (streams shown: a play is near; fetched and compiled once nobody has scrolled
   const pick = (s) => { const t = (s.title || "").split("\n"); play(s.url, kindOf(s), t[0], t[1] || ""); };
   const show = (r) => {
     if (box.dataset.sid !== sid) return;
@@ -301,7 +307,7 @@ function loadVersions(box, type, sid, count, scroller) {
     if (!list.length) {
       pauseVersionFeed(box, true);
       box.tok = null;
-      box.innerHTML = cuv(ICON.film, "No versions found", r.error ? "The fleet couldn't look just now." : "The fleet has nothing of this title yet.", r.error ? "Try again" : null);
+      box.innerHTML = cuv(ICON.film, "No streams found", r.error ? "The fleet couldn't look just now." : "The fleet has nothing of this title yet.", r.error ? "Try again" : null);
       if (r.error) box.querySelector(".cuv .btn").onclick = () => { memo.delete(versionsUrl(type, sid)); loadVersions(box, type, sid, count, scroller); };
       return;
     }
@@ -319,7 +325,7 @@ function loadVersions(box, type, sid, count, scroller) {
     if (box.dataset.sid !== sid) return;
     box.at = 0;
     box.removeAttribute("aria-busy");
-    box.innerHTML = cuv(ICON.alert, "Couldn't list the versions", plainErr(e), "Try again");
+    box.innerHTML = cuv(ICON.alert, "Couldn't load streams", plainErr(e), "Try again");
     box.querySelector(".cuv .btn").onclick = () => loadVersions(box, type, sid, count, scroller);
   });
 }

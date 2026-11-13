@@ -1,0 +1,39 @@
+{
+  "baseline": "Tor app version 91, saved before the Mac source-processing experiment",
+  "baseline_sha256": "4d715b7e5b21ae19af75678a2a862089d38d46333efd86d9c0a6dc4015df7efc",
+  "backend_verification": "AST matches baseline except web assets, branding, browser_streams labels and Direct-entry removal",
+  "worker_revision": "6b362eafbc2d21c3f3348bf2dfbf8d359161dbed",
+  "worker_action": "Existing binary-compatible workers retained; JSON source jobs not used by Frame",
+  "preserved": [
+    "Frame UI and PWA",
+    "Apple native playback, fullscreen and PiP",
+    "Renamed domains and old Tor proxy",
+    "Original / As is / Converted source labels"
+  ],
+  "removed": [
+    "Mac source delegation in Runners",
+    "Incremental cold metadata windows",
+    "Experimental foreground dispatch priority",
+    "Additional native seek-hint requests"
+  ],
+  "deployed_version": 3,
+  "deployed_code": "f520c31c1fbd",
+  "verification": {
+    "python_tests": 28,
+    "player_tests": 14,
+    "source_tests": 15,
+    "pwa_tests": 12,
+    "live_routes": [
+      "frame",
+      "frame-1",
+      "tor"
+    ],
+    "live_media": "Converted H.264 video and AAC audio decoded at start and at 60.352s; HTTP/ffprobe sample, not a cold-start benchmark or iPhone gesture verification"
+  },
+  "ui_refinement": {
+    "app_version": 4,
+    "code": "b42880830acc",
+    "source_tests": 17,
+    "note": "Minimal title/source rows and player details; backend remains Tor v91"
+  }
+}

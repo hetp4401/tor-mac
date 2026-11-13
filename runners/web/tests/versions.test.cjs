@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const code = fs.readFileSync(path.join(__dirname, '../versions.js'), 'utf8').split('const sheet =')[0];
 function api(extra = {}) {
   const context = vm.createContext({console, ...extra});
-  vm.runInContext(code + '\nglobalThis.api = {versionBytes, sortedVersions, fitVersions, applePlayer, verTop, versionPlayLabel, verRow, trapDialogTab, renderVersions, pauseVersionFeed, syncVersionFeeds};', context);
+  vm.runInContext(code + '\nglobalThis.api = {versionBytes, sortedVersions, fitVersions, applePlayer, verTop, verWords, streamSize, versionPlayLabel, verRow, trapDialogTab, renderVersions, pauseVersionFeed, syncVersionFeeds};', context);
   return context.api;
 }
 const source = (size, mode='🎞 Original', url=size+mode) => ({name:mode+'\n4K HDR',title:'Movie.mkv\n💾 '+size+' · source',url});
@@ -135,12 +135,12 @@ function feedHarness({wide=true, automatic=true}={}) {
 }
 test('scrolling appends bounded batches, updates totals and never takes focus', () => {
   const h=feedHarness();h.api.renderVersions(h.box,h.rows,null,()=>{},'movie/feed');
-  assert.equal(h.shown(),12);assert.equal(h.status(),'12 of 29 options');
+  assert.equal(h.shown(),12);assert.equal(h.status(),'12 of 29 streams');
   assert.equal(h.observers[0].options.root,null);
-  h.observers[0].enter();assert.equal(h.shown(),24);assert.equal(h.status(),'24 of 29 options');
+  h.observers[0].enter();assert.equal(h.shown(),24);assert.equal(h.status(),'24 of 29 streams');
   assert.equal(h.observers[0].disconnected,true);
   h.observers[0].enter();assert.equal(h.shown(),24,'a queued callback from an old observer must be ignored');
-  h.observers.at(-1).enter();assert.equal(h.shown(),29);assert.equal(h.status(),'29 of 29 options');
+  h.observers.at(-1).enter();assert.equal(h.shown(),29);assert.equal(h.status(),'29 of 29 streams');
   assert.equal(h.box.spy,null,'finished feeds release their observer');
   assert.equal(h.focused.length,0);
 });
@@ -152,7 +152,7 @@ test('sheet feeds use their scroll root and pause cleanly while hidden or replac
   h.observers[0].enter();assert.equal(h.shown(),8);
   h.box.visible=true;h.api.syncVersionFeeds();assert.ok(h.box.spy);h.observers.at(-1).enter();assert.equal(h.shown(),16);
   const old=h.observers.at(-1);h.api.renderVersions(h.box,h.rows.slice(0,3),scroll,()=>{},'series/other');
-  assert.equal(old.disconnected,true);old.enter();assert.equal(h.shown(),3);assert.equal(h.status(),'3 of 3 options');
+  assert.equal(old.disconnected,true);old.enter();assert.equal(h.shown(),3);assert.equal(h.status(),'3 of 3 streams');
 });
 test('sorting starts a fresh feed and keyboard fallback loads more when observers are unavailable', () => {
   const h=feedHarness();h.api.renderVersions(h.box,h.rows,null,()=>{},'movie/sort');h.observers[0].enter();
@@ -162,5 +162,56 @@ test('sorting starts a fresh feed and keyboard fallback loads more when observer
   const fallback=feedHarness({automatic:false,wide:false});fallback.api.renderVersions(fallback.box,fallback.rows,null,()=>{},'movie/fallback');
   const button=fallback.box.querySelector('.vgroup').children.at(-1);assert.equal(button.tag,'button');
   fallback.document.activeElement=button;button.onclick();assert.equal(fallback.shown(),16);assert.equal(fallback.focused.length,1);
-  assert.equal(fallback.status(),'16 of 29 options');
+  assert.equal(fallback.status(),'16 of 29 streams');
+});
+
+const coreCode = fs.readFileSync(path.join(__dirname, '../core.js'), 'utf8');
+function titleHarness(knownTitle) {
+  const nodes=new Map(),calls=[];
+  const node=id=>{ if(!nodes.has(id))nodes.set(id,{id,dataset:{},classList:{toggle(){}},firstChild:{addEventListener(){}},innerHTML:''});return nodes.get(id); };
+  const context=vm.createContext({known:new Map([[knownTitle.id,knownTitle]]),here:{},shown:null,cur:null,curEp:null,series:{id:null,videos:[]},
+    listsFor:null,seasonShown:null,pendingTo:null,lastView:'v-title',byId:node,yearOf:()=>'',pic:{poster:()=>''},backdrop(){},titleSlot(){},paintTitle(){},noteSeen(){},
+    epsOf:m=>m.videos||[],epsLoading(){},paintSeasons(){},openEpisode:(s,e)=>calls.push(['episode',s,e]),closeSheet(){},
+    loadVersions:(box,type,id)=>calls.push(['streams',type,id]),meta:()=>{calls.push(['metadata']);return new Promise(()=>{});},
+    afterFrame(){throw new Error('stream loading must not wait for a frame or another user action');}});
+  const start=coreCode.indexOf('function showTitle('),end=coreCode.indexOf('\nlet listsFor',start);
+  vm.runInContext(coreCode.slice(start,end)+';globalThis.open=showTitle;',context);
+  return {open:context.open,calls,nodes};
+}
+test('opening a movie starts its streams immediately, before metadata finishes', () => {
+  const h=titleHarness({id:'tt123',type:'movie',name:'Test'});h.open('movie','tt123',null,null,null);
+  assert.deepEqual(h.calls,[['streams','movie','tt123'],['metadata']]);
+});
+test('opening a known episode does not require a separate stream-selection action', () => {
+  const h=titleHarness({id:'tt456',type:'series',name:'Series',videos:[{season:1,episode:2,id:'tt456:1:2'}]});h.open('series','tt456',1,2,null);
+  assert.deepEqual(h.calls,[['episode',1,2],['metadata']]);
+});
+test('movie title actions do not add a chooser step', () => {
+  const states=[],box={innerHTML:'stale',classList:{toggle:(name,value)=>states.push([name,value])}};
+  const context=vm.createContext({byId:()=>box,recent:()=>[],cur:{id:'tt123'}});
+  const start=coreCode.indexOf('function paintActs('),end=coreCode.indexOf('\nfunction seasonList',start);
+  vm.runInContext(coreCode.slice(start,end)+';paintActs({id:"tt123"},"movie");',context);
+  assert.equal(box.innerHTML,'');assert.deepEqual(states,[['hidden',true]]);
+});
+
+test('stream rows keep quality, mode and size concise while retaining filename access', () => {
+  const {verTop,verWords,verRow,versionPlayLabel}=api({esc:String,ICON:{play:'play',link:'link',dl:'download'},
+    document:{createElement:()=>({dataset:{},controls:{'.vplay':{},'.cp':{}},querySelector(q){return this.controls[q];}})}});
+  const file='Film.2026.2160p.UHD.BluRay.REMUX.TrueHD.Atmos.7.1.DV.HEVC-Group.mkv';
+  const item={name:'🎞 Original\n4K Dolby Vision · HDR10',title:file+'\n💾 45.7 GB · HEVC · TrueHD Atmos · English + 8 languages',url:'/hls/s/orig.m3u8',download:'/dl/s/film.mkv',
+    f:{h:'4K Dolby Vision · HDR10',v:'HEVC',s:'TrueHD 7.1',l:'English + 8 languages'}};
+  assert.equal(verTop(item).replace(/<[^>]*>/g,''),'Original4K · Remux');
+  assert.equal(verWords(item).replace(/<[^>]*>/g,''),'45.7 GB');
+  const row=verRow(item,()=>{});
+  assert.ok(versionPlayLabel(item).includes(file));
+  assert.ok(row.innerHTML.includes('title="'+file+'"'));
+  assert.doesNotMatch(row.innerHTML,/<span class="vf"|class="vok"|English \+ 8 languages/);
+  assert.ok(row.innerHTML.includes('Copy file link'));
+  assert.ok(row.innerHTML.includes('Download source file'));
+});
+test('minimal size labels respect actual numeric size and unknown values', () => {
+  const {streamSize}=api();
+  assert.equal(streamSize(source('900 MB')),'900 MB');
+  assert.equal(streamSize({...source('20 GB'),behaviorHints:{videoSize:1.25e9}}),'1.3 GB');
+  assert.equal(streamSize(source('unknown')),'Size unknown');
 });

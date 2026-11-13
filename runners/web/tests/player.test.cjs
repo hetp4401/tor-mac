@@ -8,6 +8,7 @@ const vm = require('vm');
 const cases = [];
 const test = (name, run) => cases.push({name, run});
 const source = fs.readFileSync(path.join(__dirname, '..', 'player.js'), 'utf8');
+const escaping = fs.readFileSync(path.join(__dirname, '..', 'core.js'), 'utf8').split('\n').find(line => line.startsWith('const esc ='));
 
 function declaration(name) {
   const start = source.indexOf(`function ${name}(`);
@@ -47,12 +48,13 @@ function context(names, overrides = {}) {
     WHY: {}, RISE: [], cur: {id: 'test', name: 'Test'}, curEp: null, layoutDirty: false,
     closeMenu() {}, ripOff() {}, hudOff() {}, hideUpNext() {}, paintCover() {}, stopBar() {}, placeBar() {},
     closeSheet() {}, paintTitles() {}, setUi() {}, setBusy() {}, showPlayer() {}, anim() {}, playerLayout() {},
-    paintNativeOptions() {}, configureNativePlayer() {}, enterNativeFullscreen() {}, syncLandscape() {}, releaseLandscape() {}, cancelNativeSeekHint() {}, hoverable: true,
+    paintNativeOptions() {}, configureNativePlayer() {}, enterNativeFullscreen() {}, syncLandscape() {}, releaseLandscape() {}, hoverable: true,
     teardown() { ctx.mediaFor = null; }, loadHls() { throw Error('Native HLS must not load hls.js'); },
     failPlay() { throw Error('Unexpected media failure'); },
     ...overrides,
   };
   vm.createContext(ctx);
+  vm.runInContext(escaping, ctx);
   for (const name of names) vm.runInContext(declaration(name), ctx);
   return ctx;
 }
@@ -158,46 +160,6 @@ test('Touch playback requests fullscreen in the original source click task', () 
   ctx.play('/test.mp4','as is','test.mp4','1 GB');
   assert.ok(ctx.calls.includes('fullscreen'));
   assert.equal(ctx.mediaFor,null,'Stream attachment remains deferred for the custom player');
-});
-
-test('Native cold seek sends a bounded time hint without fetching a playlist', () => {
-  for (const mode of ['index','orig']) {
-    const requests=[];
-    const ctx=context(['cancelNativeSeekHint','hintNativeSeek'],{
-      URL, location:{href:'https://frame.test/watch'}, live:()=>true,isBuffered:()=>false,
-      playing:{native:true,url:'/hls/token/'+mode+'.m3u8?r=2'},
-      nativeSeekHint:{timer:0,controller:null,at:-1e9,session:null,sent:''},
-      fetch:(url,options)=>{requests.push({url,options});return Promise.resolve();},
-    });
-    ctx.hintNativeSeek(123.25);ctx.hintNativeSeek(123.25);
-    assert.equal(requests.length,1,'Repeated native seeking events are deduplicated');
-    const url=new URL(requests[0].url);
-    assert.equal(url.pathname,'/hls/token/seek');assert.equal(url.searchParams.get('t'),'123.250');
-    assert.equal(url.searchParams.get('r'),'2');assert.equal(url.searchParams.get('v'),mode==='orig'?'orig':null);
-    assert.equal(requests[0].options.cache,'no-store');
-  }
-});
-
-test('Native seek hint ignores direct files, buffered positions and obsolete sessions', () => {
-  const requests=[], timers=new Map();let clock=1000,id=0;
-  const controller=class{constructor(){this.signal={aborted:false};}abort(){this.signal.aborted=true;}};
-  const ctx=context(['cancelNativeSeekHint','hintNativeSeek'],{
-    URL,AbortController:controller,location:{href:'https://frame.test/watch'},live:()=>true,isBuffered:()=>false,
-    performance:{now:()=>clock},setTimeout:fn=>{timers.set(++id,fn);return id;},clearTimeout:id=>timers.delete(id),
-    playing:{native:true,url:'/file/token/movie.mp4'},nativeSeekHint:{timer:0,controller:null,at:-1e9,session:null,sent:''},
-    fetch:(url,options)=>{requests.push({url,options});return new Promise(()=>{});},
-  });
-  ctx.hintNativeSeek(100);assert.equal(requests.length,0);
-  ctx.playing.url='/hls/token/index.m3u8';ctx.isBuffered=()=>true;ctx.hintNativeSeek(100);assert.equal(requests.length,0);
-  ctx.isBuffered=()=>false;ctx.hintNativeSeek(100);assert.equal(requests.length,1);
-  clock=1100;ctx.hintNativeSeek(200);clock=1200;ctx.hintNativeSeek(300);
-  assert.equal(timers.size,2,'Only the latest seek and the current request deadline remain');
-  clock=1334;timers.get(ctx.nativeSeekHint.timer)();
-  assert.equal(requests.length,2);assert.match(requests[1].url,/t=300\.000/);
-  assert.equal(requests[0].options.signal.aborted,true,'A newer seek cancels its predecessor');
-  clock=1400;ctx.hintNativeSeek(400);const pending=timers.get(ctx.nativeSeekHint.timer);
-  ctx.playing={native:true,url:'/hls/new/index.m3u8'};ctx.cancelNativeSeekHint();pending();
-  assert.equal(requests.length,2);assert.equal(requests[1].options.signal.aborted,true);
 });
 
 test('PiP capability is refreshed after metadata and tolerates unsupported APIs', () => {

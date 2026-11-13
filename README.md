@@ -1,8 +1,10 @@
 # Frame
 
-Frame's media workers run on three GitHub-hosted Apple Silicon macOS jobs. The production configuration prioritizes cold-start and first-seek latency: Runners probes and prepares compact video segments, then the Macs convert them using VideoToolbox. Runners caches source bytes and finished segments and preserves separate language tracks.
+Frame's media workers run on three GitHub-hosted Apple Silicon macOS jobs. Runners probes and prepares compact video segments, then the Macs convert them using VideoToolbox. Runners caches source bytes and finished segments and preserves separate language tracks.
 
-An opt-in source mode moves probing, keyframe extraction, segment preparation, and audio conversion onto the Macs too. Both modes passed the live benchmark; compact uploads remain the default because cold starts and first uncached seeks were faster. See `benchmark/README.md` for the measured tradeoff.
+Playback was restored to the saved Tor v91 backend on November 13 after reported regressions. This restores the earlier probing, buffering, Mac dispatch, fallback, cancellation and seek behavior. Frame's UI, PWA, native Apple player and renamed domains remain. The additional native seek-hint requests and experimental cold-start priority/window changes have been removed.
+
+The Mac workers retain experimental JSON source-processing endpoints for the standalone benchmark harness. Production Frame no longer invokes them. The worker's compact binary conversion path is compatible with Tor v91, so this rollback does not require restarting the Macs. See `benchmark/README.md` for historical measurements; they do not override the reported playback regression.
 
 The production workers are `https://frame-mac-1.billybishop4-workers.xyz` through `frame-mac-3`. Each slot has its own persistent Cloudflare Tunnel. The shared `https://frame-mac.billybishop4-workers.xyz` address also exists; Frame selects individual slots to distribute jobs. The previous `mac` and `mac-1` through `mac-4` hostnames remain aliases. The rename retained the existing tunnel UUIDs, tokens, and running workers; slot 4 remains available for isolated benchmarks. See [the tunnel mapping](docs/mac-tunnels.json).
 
@@ -14,7 +16,7 @@ The previous `tor` app is a small streaming reverse proxy to Frame, defined in `
 
 The [editable web sources](runners/web/README.md) cover the responsive UI, native Apple video controls, unified size-sorted source list, and PWA install/update behavior.
 
-## Source jobs
+## Experimental worker source jobs
 
 All processing endpoints require `X-Mac-Key`. JSON jobs contain a source descriptor:
 
@@ -50,9 +52,9 @@ VideoToolbox accelerates video decoding, scaling, HDR conversion, and encoding. 
 
 ## Runners integration
 
-`runners/tor.py` is the Frame application source, recovered from deployed version 91 and updated with source jobs. It includes the Frame web app, source/cache storage, language playlists, and original-quality video remuxing. Original video remuxing remains on Runners; unavailable Macs also permit the existing local fallback. Source mode avoids racing local video conversion against a healthy Mac and cancels losing hedged requests.
+`runners/tor.py` combines the restored Tor v91 backend with the current Frame web bundle and source labels. Original video remuxing and audio preparation happen on Runners; converted video uses compact binary uploads to the Macs with the original local fallback and buffering rules. The current UI offers Original, As is and Converted streams without separate Direct/External entries.
 
-`MAC_INPUT_MODE=legacy` is the production default and selects compact binary uploads for cold latency. `source` explicitly opts into Mac-owned source processing. `runners/deploy.py` updates only the inline Python Compose config and code marker, retaining the app's existing Dockerfile, replicas, services, and volumes:
+`runners/deploy.py` updates only the inline Python Compose config and code marker, retaining the app's existing Dockerfile, replicas, services, environment and volumes:
 
 ```sh
 export RUNNERS_ADMIN_PASSWORD='<admin password>'
@@ -60,13 +62,7 @@ python3 runners/deploy.py --expect-version <current-version>       # inspect
 python3 runners/deploy.py --expect-version <current-version> --apply
 ```
 
-A concurrent app version change causes the command to stop. To opt into the full source-processing path, use `--mode source` with the current version. Deployment credentials are never printed.
-
-Cold probing publishes the initial source download in 256 KiB chunks so metadata readers can begin before an entire 8 MiB video block arrives. Matroska index reads use at most eight small metadata windows, validate byte ranges, and fall back to the existing block reader for incompatible origins. Complete video blocks and converted output keep their existing caches. Set `TOR_PROBE_WINDOWS=0` to disable the metadata windows. Worker health and connection setup begins alongside probing for locally owned converted playback.
-
-A seek promotes the queued source read that owns its requested bytes, including a block reserved later in an existing batch. This prevents background read admission from holding up its own foreground consumer. Promotion retains the existing concurrency limits and shares the original download.
-
-`TOR_COLD_PRIORITY_MS` optionally reserves the first requested video piece ahead of new background conversions. The generic default is `0`; the measured production setting is `1000`. The wait ends when that piece is ready or the bounded deadline expires, and never blocks the requested piece or audio. Deploy it with `--cold-priority-ms 1000` (accepted range: 0–1000). See [the cold playback measurements](benchmark/HLS_README.md) for the first-frame benefit and subsequent-segment tradeoff.
+A concurrent app version change causes the command to stop. The former source-mode and cold-priority deployment options have been removed. Old `MAC_INPUT_MODE`, `TOR_COLD_PRIORITY_MS` and `TOR_PROBE_WINDOWS` environment values have no effect on the restored backend.
 
 ## Jobs and testing
 
@@ -80,4 +76,4 @@ Install FFmpeg and run:
 python3 -m unittest discover -s tests -v
 ```
 
-Tests cover source authorization and ranges, bounded reads and cancellation, byte-cache expiry and eviction, hardware conversion when available, timestamps, track selection, adjacent audio segments, legacy compatibility, and Runners request contracts.
+Tests cover compact Mac request handling, worker source authorization and ranges, bounded reads and cancellation, byte-cache expiry and eviction, hardware conversion when available, timestamps, track selection, adjacent audio segments, and web bundle consistency. Tests specific to the reverted experimental backend were removed with that backend code.

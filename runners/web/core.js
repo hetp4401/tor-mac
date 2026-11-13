@@ -730,12 +730,13 @@ function showTitle(type, id, season, episode, to) {
   const key = type + "/" + id;
   here.season = season;
   here.episode = episode;
-  pendingTo = to === "watch" || to === "versions" ? key : null;
+  pendingTo = to === "watch" || to === "streams" || to === "versions" ? key : null;
   if (shown !== key || !cur || cur.id !== id || (type === "series" && series.id !== id)) {  // (another title; or this one, should
     shown = key;
     const m = known.get(id) || {id: id, type: type};
     cur = {id: id, type: type, name: m.name || "", year: yearOf(m), poster: pic.poster(id), runtime: m.runtime || ""};
     curEp = null;
+    byId("tAbout").open = false;
     backdrop(byId("tBgS"), byId("tBg"), id);
     titleSlot(byId("tSlot"), id, m.name);
     paintTitle(m, type);
@@ -746,7 +747,6 @@ function showTitle(type, id, season, episode, to) {
     byId("tSeasons").dataset.id = "";
     seasonShown = null;
     listsFor = null;
-    let metaGone = false;
     if (type === "series") {
       const tl = byId("tList");
       if (tl.spy) { tl.spy.disconnect(); tl.spy = null; }
@@ -755,13 +755,11 @@ function showTitle(type, id, season, episode, to) {
       series = {id: id, videos: epsOf(m)};
       epsLoading();
     } else byId("tList").innerHTML = "";
-    afterFrame(() => {  // (its versions or episodes, after the frame its page first shows in: they're below the fold, and a push
-      if (shown !== key) return;
-      listsFor = key;
-      if (type === "movie") loadVersions(byId("tList"), "movie", id, true, null);
-      else if (series.videos.length) { paintSeasons(here.season); openEpisode(here.season, here.episode); }  // (a catalog's episodes, or the details')
-      else if (metaGone) epsFailed(metaGone);
-    });
+    // Fetch streams as soon as the title opens, independently of its metadata
+    // and artwork. Opening an episode likewise starts its stream list directly.
+    listsFor = key;
+    if (type === "movie") loadVersions(byId("tList"), "movie", id, true, null);
+    else if (series.videos.length) { paintSeasons(here.season); openEpisode(here.season, here.episode); }
     meta(type, id).then((full) => {
       if (shown !== key) return;
       cur.name = full.name || cur.name;
@@ -774,9 +772,7 @@ function showTitle(type, id, season, episode, to) {
         if (had !== vids.length || !byId("tSeasons").firstChild) {
           series = {id: id, videos: vids};
           seasonShown = null;
-          if (!vids.length) metaGone = "none";
-          if (listsFor !== key) {}  // (drawn after the first frame, from these)
-          else if (vids.length) { paintSeasons(here.season); openEpisode(here.season, here.episode); }
+          if (vids.length) { paintSeasons(here.season); openEpisode(here.season, here.episode); }
           else epsFailed("none");
         }
       }
@@ -785,7 +781,9 @@ function showTitle(type, id, season, episode, to) {
       if (shown !== key) return;
       byId("tDesc").innerHTML = "Couldn't load its details. " + esc(plainErr(e)) + ' <button class="again">Try again</button>';
       byId("tDesc").querySelector(".again").onclick = reloadTitle;
-      if (type === "series" && !series.videos.length) { metaGone = e; if (listsFor === key) epsFailed(e); }
+      byId("tAbout").hidden = false;
+      byId("tAbout").open = true;
+      if (type === "series" && !series.videos.length && listsFor === key) epsFailed(e);
       watchScroll(key, type);
     });
   } else {
@@ -799,9 +797,9 @@ function showTitle(type, id, season, episode, to) {
   }
   if (type === "movie") closeSheet(true);
 }
-let listsFor = null;  // (the title whose lists are drawn: after the frame its page first shows in)
+let listsFor = null;  // (the title whose stream/episode list has been started)
 function reloadTitle() { shown = null; route(false); }  // (Try again: the page made again, its details asked for anew)
-function watchScroll(key, type) {  // (Watch from the home page: to the versions or episodes, once the page has its details)
+function watchScroll(key, type) {  // (Watch from the home page: to the streams or episodes, once the page has its details)
   if (pendingTo !== key) return;
   pendingTo = null;
   history.replaceState(history.state, "", location.hash.split("?")[0]);
@@ -815,18 +813,20 @@ function paintTitle(m, type) {
   const cast = (m.cast || []).slice(0, 5), dir = (m.director || []).slice(0, 2);
   byId("tCredits").innerHTML = (cast.length ? "<div><span>Cast</span>" + esc(cast.join(", ")) + "</div>" : "") +
     (dir.length ? "<div><span>Director</span>" + esc(dir.join(", ")) + "</div>" : "");
+  byId("tAbout").hidden = !m.description && !cast.length && !dir.length;
   paintActs(m, type);
 }
-function paintActs(m, type) {  // (Resume where it's being watched; else Watch, which goes down to its versions or episodes)
+function paintActs(m, type) {  // Resume is a direct action; movie streams load without a separate chooser button.
   const box = byId("tActs"), r = recent().find((x) => x.title.id === (m.id || cur.id));
+  box.classList.toggle("hidden", !r && type !== "series");
   if (r) {
     box.innerHTML = '<button class="btn">' + ICON.play + "Resume" + (r.ep ? " S" + r.ep.s + ":E" + r.ep.e : "") + "</button>";
     box.firstChild.onclick = () => resume(r);
     box.firstChild.addEventListener("pointerdown", () => loadHls().catch(() => {}), {once: true, passive: true});  // (a resume is near)
-  } else {
-    box.innerHTML = '<button class="btn">' + ICON.play + (type === "series" ? "Browse episodes" : "Choose a version") + "</button>";
-    box.firstChild.onclick = () => scrollToSel(byId(type === "series" ? "tSeries" : "tVersions"));
-  }
+  } else if (type === "series") {
+    box.innerHTML = '<button class="btn">' + ICON.play + "Browse episodes</button>";
+    box.firstChild.onclick = () => scrollToSel(byId("tSeries"));
+  } else box.innerHTML = "";
 }
 function seasonList() {
   const ss = [...new Set(series.videos.map((v) => v.season))];
@@ -928,7 +928,7 @@ function epProgress() {  // (the progress lines and "left" words of the episodes
     if (left) left.textContent = leftText(p);
   });
 }
-function markEp() {  // (the episode whose versions are open: outlined)
+function markEp() {  // (the episode whose streams are open: outlined)
   const open = sheet.classList.contains("open") && curEp && series.id === (cur && cur.id);
   byId("tEps").querySelectorAll(".ep").forEach((d) => d.classList.toggle("on", !!open && Number(d.dataset.s) === curEp.s && Number(d.dataset.e) === curEp.e));
 }

@@ -21,7 +21,8 @@
   function message(type, title, text, label, action) {
     if (activePlayback()) return;
     kind = type;
-    notice.innerHTML = '<div class="pwa-copy"><strong>' + esc(title) + '</strong><p>' + esc(text) + '</p></div><div class="pwa-actions">' +
+    notice.classList.toggle("compact", type === "update" || type === "updating");
+    notice.innerHTML = '<div class="pwa-copy"><strong>' + esc(title) + '</strong>' + (text ? '<p>' + esc(text) + '</p>' : '') + '</div><div class="pwa-actions">' +
       (label ? '<button class="pwa-action" type="button">' + esc(label) + '</button>' : '') +
       '<button class="pwa-close" type="button" aria-label="Dismiss notification">' + ICON.close + '</button></div>';
     notice.hidden = false;
@@ -45,7 +46,7 @@
       refresh();
     }, 15000);
     registration.waiting.postMessage({type: "FLEET_ACTIVATE_UPDATE"});
-    message("updating", "Updating Frame", "Your library and watch progress will stay on this device.");
+    message("updating", "Updating…", "");
   }
   function refresh() {
     if (install) install.hidden = standalone() || (!prompt && !ios && !safari);
@@ -58,13 +59,13 @@
     }
     if (kind === "offline") hide();
     if (reloadAvailable && kind !== "install") {
-      message("update", "Ready to finish updating", "Reload Frame to use the new version. Your library and progress will stay here.", "Reload", () => {
+      message("update", "Update ready", "", "Reload", () => {
         if (!activePlayback()) location.reload();
       });
       return;
     }
     if (registration && registration.waiting && registration.waiting !== dismissedUpdate && kind !== "install" && kind !== "updating") {
-      message("update", "Frame update available", "Update when you’re ready. Your library and progress will stay here.", "Update", updateAction);
+      message("update", "Update available", "", "Update", updateAction);
     }
   }
   if (install) install.onclick = async () => {
@@ -99,7 +100,7 @@
     if (activePlayback()) { reloadAvailable = true; hide(); return; }
     location.reload();
   });
-  navigator.serviceWorker.register("/sw.js", {updateViaCache: "none"}).then((reg) => {
+  navigator.serviceWorker.register("/sw.js?release=2026-11-13-frame-7", {updateViaCache: "none"}).then((reg) => {
     registration = reg;
     refresh();
     reg.addEventListener("updatefound", () => {

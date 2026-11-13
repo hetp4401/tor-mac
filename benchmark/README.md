@@ -1,6 +1,8 @@
 # Before/after measurements
 
-Production uses compact uploads (`MAC_INPUT_MODE=legacy`) to prioritize cold starts and first seeks. Full Mac-owned source processing is available explicitly, but is not the default.
+Historical experiment: production playback was restored to Tor v91 on November 13 after reported regressions. Source delegation, metadata windows, cold-priority dispatch and native seek hints are not active. Results below describe the previous experiments.
+
+These runs compared compact uploads with experimental full Mac-owned source processing.
 
 The final run compared 36 successful conversions on the same GitHub-hosted Mac (slot 4), called from the same Runners host through real Cloudflare tunnels. Each output was one second / 24 frames, with matching timestamps and dimensions. The source fixtures were generated 60-second videos: H264 SDR 720p and HEVC 10-bit HDR 1080p, both with 10-second keyframe spacing and AAC audio. Both paths muxed the same audio; production normally requests video and audio separately.
 
