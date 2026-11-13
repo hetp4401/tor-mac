@@ -49,6 +49,7 @@ function context(names, overrides = {}) {
     closeMenu() {}, ripOff() {}, hudOff() {}, hideUpNext() {}, paintCover() {}, stopBar() {}, placeBar() {},
     closeSheet() {}, paintTitles() {}, setUi() {}, setBusy() {}, showPlayer() {}, anim() {}, playerLayout() {},
     paintNativeOptions() {}, configureNativePlayer() {}, enterNativeFullscreen() {}, syncLandscape() {}, releaseLandscape() {}, hoverable: true,
+    beginPlayback(p) { p.mediaUrl = p.url; }, releasePlayback() {}, correctedPlaybackURL: url => url,
     teardown() { ctx.mediaFor = null; }, loadHls() { throw Error('Native HLS must not load hls.js'); },
     failPlay() { throw Error('Unexpected media failure'); },
     ...overrides,
@@ -75,6 +76,24 @@ test('Apple original HLS and direct files also retain synchronous playback', () 
     assert.equal(ctx.vid.src, url);
     assert.deepEqual(ctx.calls, ['play']);
   }
+});
+
+test('a remembered file correction attaches compatible playback in the original click task', () => {
+  const ctx = context(['play', 'attach', 'startPlay'], {
+    correctedPlaybackURL: () => '/hls/test/index.m3u8', playbackChoiceKey: () => 'file:test',
+  });
+  ctx.play('/file/test/movie.mp4', 'as is', 'movie.mp4', '2 GB');
+  assert.equal(ctx.vid.src, '/hls/test/index.m3u8');
+  assert.equal(ctx.playing.kind, 'converted');
+  assert.deepEqual(ctx.calls, ['play']);
+});
+
+test('Original decoding failure first permits compatible video to be copied', () => {
+  const attempts = [], p = {url:'/hls/test/orig.m3u8'};
+  const ctx = context(['origFailed'], {recoverPlayback: (...args) => { attempts.push(args); return true; }});
+  ctx.origFailed(p);
+  assert.equal(attempts[0][0], p);
+  assert.equal(attempts[0][2], false, 'Force video encoding only if compatible playback also fails');
 });
 
 test('A superseded attachment cannot replace the current stream', () => {

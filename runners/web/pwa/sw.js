@@ -1,6 +1,6 @@
 // Frame keeps its interface available offline. Media, playlists, API responses
 // and signed source URLs always go directly to the network.
-const VERSION = "2026-11-13-frame-7";
+const VERSION = "2026-11-13-frame-15";
 // Keep the original cache lineage so existing installations migrate safely.
 const PAGE_CACHE = "fleet-shell-" + VERSION;
 const ASSET_CACHE = "fleet-assets-" + VERSION;

@@ -71,17 +71,26 @@ def main():
     spec.update(compose=compose)
     if not args.apply:
         print(json.dumps({'app': args.app, 'current_version': project['version'], 'code': revision,
-                          'replicas': project['replicas'], 'playback': 'tor-v91', 'applied': False}))
+                          'replicas': project['replicas'], 'playback': 'sessions-v1', 'applied': False}))
         return
     password = os.environ.get('RUNNERS_ADMIN_PASSWORD')
     if not password:
-        ap.error('RUNNERS_ADMIN_PASSWORD must be set')
-    headers.update({'x-admin-password': password, 'Content-Type': 'application/json'})
+        status = json.load(urllib.request.urlopen(urllib.request.Request(args.url.rstrip('/') + '/api/status', headers=headers), timeout=15))
+        if status.get('requireDeployAuth') is not False or project.get('hasPassword'):
+            ap.error('RUNNERS_ADMIN_PASSWORD must be set for this deployment')
+    if password:
+        headers['x-admin-password'] = password
+    headers['Content-Type'] = 'application/json'
     try:
         response = json.load(urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(spec).encode(),
                            headers=headers, method='PUT'), timeout=45))
     except urllib.error.HTTPError as error:
-        raise SystemExit(f'Deployment HTTP {error.code}; response omitted to protect credentials') from None
+        try:
+            detail = json.loads(error.read()).get('error', '')
+        except (ValueError, AttributeError):
+            detail = 'unreadable deployment response'
+        # Error text only; never print the spec, environment or request headers.
+        raise SystemExit(f'Deployment HTTP {error.code}: {str(detail)[:500]}') from None
     print(json.dumps({k: response.get(k) for k in ('name', 'version', 'stable', 'replicas', 'state')}))
 
 

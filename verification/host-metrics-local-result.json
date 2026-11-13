@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "platform": "local macOS",
+  "real_worker_http": true,
+  "jobs_created": 0,
+  "sample_interval_s": 5.166,
+  "sample_cost_ms": 4.363,
+  "metrics": {
+    "cpu_percent": 16.1,
+    "cpus": 8,
+    "memory_used": 6521552896,
+    "memory_total": 8589934592,
+    "disk_free": 20666437632,
+    "disk_total": 245107195904,
+    "network_rx": 123101.84,
+    "network_tx": 228362.83,
+    "disk_read": 13000029.64,
+    "disk_write": 563770.73
+  },
+  "apfs_capacity_check": {
+    "disk_used": 224442171392,
+    "disk_total": 245107195904,
+    "disk_free": 20665024512,
+    "disk_percent": 91.6
+  }
+}

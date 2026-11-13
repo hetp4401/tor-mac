@@ -100,7 +100,7 @@
     if (activePlayback()) { reloadAvailable = true; hide(); return; }
     location.reload();
   });
-  navigator.serviceWorker.register("/sw.js?release=2026-11-13-frame-7", {updateViaCache: "none"}).then((reg) => {
+  navigator.serviceWorker.register("/sw.js?release=2026-11-13-frame-15", {updateViaCache: "none"}).then((reg) => {
     registration = reg;
     refresh();
     reg.addEventListener("updatefound", () => {

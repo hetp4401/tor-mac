@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "macs": 3,
+  "machines": 1,
+  "host_ids": [
+    "27"
+  ],
+  "scope": {
+    "app": "frame",
+    "machines": "replica_hosts"
+  },
+  "width": 402,
+  "overflow": false,
+  "search": true,
+  "filters": true,
+  "details": true,
+  "replica_resources": true,
+  "mac_resource_metrics": true,
+  "mac_revisions": [
+    "b767b149a3d1",
+    "b767b149a3d1",
+    "4aecc572e594"
+  ],
+  "time_series_tabs": [
+    "cpu",
+    "gpu",
+    "memory",
+    "disk",
+    "network",
+    "work"
+  ],
+  "chart_range": true,
+  "cpu_core_series": [
+    0,
+    0,
+    3
+  ],
+  "pause": true,
+  "code": "29399b3019c3"
+}

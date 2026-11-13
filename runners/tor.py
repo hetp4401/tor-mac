@@ -22,6 +22,7 @@
 
 
 import base64
+import bisect
 import collections
 import concurrent.futures
 import contextlib
@@ -195,9 +196,12 @@ class Pool:
                         raise ConnectionAbortedError("ended")
                 if hold is not None:
                     hold["sending"] = True
+                    if hold.get("finish_upload_on_stop"):
+                        c.sock.settimeout(min(timeout, 5))
                 c.request(method, path, body=body, headers=headers)
                 if hold is not None:
                     hold["sent"] = time.time()
+                    c.sock.settimeout(timeout)
                     if hold.get("ended"):
                         end_call(hold)
                 r = c.getresponse()
@@ -230,9 +234,15 @@ def end_call(call):
 
 
     call["ended"] = True
+    # Cloudflare can keep a partially uploaded request open at the worker after
+    # its caller disconnects. Complete the small, already-prepared segment body
+    # (a five-second upload deadline), then close before waiting for conversion.
+    # Source reads and uploads that have not started still cancel immediately.
+    if call.get("finish_upload_on_stop") and call.get("sending") and not call.get("sent"):
+        return
     with conns.lock:
         c = call.get("conn")
-        if c is None or (call.get("sending") and call.get("sent") is None):
+        if c is None:
             return
         try:
             if c.sock is not None:
@@ -1611,6 +1621,10 @@ def status():
                                "up_mbps": round(st.upload_rate * 8 / 1e6, 1), "peers": st.num_peers, "known_peers": st.list_peers,
                                "state": str(st.state).split(".")[-1], "paused": bool(st.flags & lt.torrent_flags.paused),
                                "error": st.errc.message() if st.errc.value() else None})
+    active = sum(not s["closed"] and time.monotonic() - s["seen"] < PLAYBACK_TTL for s in list(playback_sessions.values()))
+    out["playback"] = {"sessions": active, "media_processes": len(media_processes), "lookahead_pieces": HLS_AHEAD,
+                       "stopped_sessions": sum(s["closed"] for s in list(playback_sessions.values()))}
+    out["streams_now"] += active
     out["dht_nodes"] = ses.status().dht_nodes
     out["converted"] = {"pieces": len(pieces), "gb": round(pieces_size["n"] / 1e9, 2),
                         "ffmpeg": [{"piece": n, "cls": j["cls"], "running": bool(j["p"]), "best": j["best"]} for (_, n), j in list(cpu_jobs.items())],
@@ -1746,11 +1760,11 @@ RUN_X264 = [x + ":ipratio=1" if x.startswith("mbtree") else x for x in X264]
 
 SEG_DIR = os.environ.get("SEG_DIR", "/segs")
 SEG_DISK = int(float(os.environ.get("SEG_DISK_GB", "30")) * 2**30)
-BUFFER_BYTES = int(float(os.environ.get("BUFFER_MB", "4000")) * 2**20)
+BUFFER_BYTES = int(float(os.environ.get("BUFFER_MB", "96")) * 2**20)
 
-BUFFER_MAKING = 16
+BUFFER_MAKING = 4
 RAM_PIECES = int(float(os.environ.get("RAM_PIECES_GB", "2")) * 2**30)
-FILM_IDLE = 600
+FILM_IDLE = 45
 FILM_LEFT = 30
 
 EARLY_TS = b"\x47\x1f\xff\x10" + b"\xff" * 184
@@ -1759,11 +1773,11 @@ EARLY_MP4 = b"\x00\x00\x00\x08free"
 
 EARLY_EVERY = 20
 HINTS = 3
-WARM_FIRST = 4
-WARM_NEXT = 2
+WARM_FIRST = 0
+WARM_NEXT = 0
 
 
-FACTS_FIRST = 4
+FACTS_FIRST = 0
 
 
 
@@ -1844,6 +1858,545 @@ mac_looked = {"at": 0, "busy": False}
 
 
 
+# BEGIN PLAYBACK LIFECYCLE
+"""Embedded into tor.py by web/build.py; no extra runtime deployment file."""
+
+PLAYBACK_TTL = 45
+PLAYBACK_TOMBSTONE = 600
+playback_lock = threading.RLock()
+playback_sessions = {}
+playback_epochs = collections.defaultdict(int)
+playback_stopped = set()
+playback_local = threading.local()
+media_process_lock = threading.Lock()
+media_processes = {}
+playback_demands = collections.Counter()
+playback_demand_lock = threading.Lock()
+
+
+def work_check(key):
+    key = key.split(":", 1)[0]
+    epoch = getattr(playback_local, "epochs", {}).get(key, playback_epochs[key])
+    if key in playback_stopped or epoch != playback_epochs[key]:
+        raise Dropped("playback was stopped or replaced")
+    request = getattr(playback_local, "request", None)
+    if request and request["key"] == key and request["n"] >= 0:
+        s = playback_sessions.get(request["sid"], {})
+        if s.get("closed"):
+            raise Dropped("media request belongs to a stopped session")
+
+
+def playback_requested(key, n):
+    # Native HLS may finish its current fragment before issuing the latest
+    # seek. Truncating that response can strand the native request queue.
+    with playback_demand_lock:
+        return playback_demands.get((key, n), 0) > 0
+
+
+@contextlib.contextmanager
+def playback_request(key, n, query):
+    sid = (query.get("sid") or [""])[0]
+    s = playback_sessions.get(sid, {})
+    previous = getattr(playback_local, "request", None)
+    tracked = bool(s.get("managed") and n >= 0)
+    if tracked:
+        playback_local.request = {"key": key, "n": n, "sid": sid}
+        with playback_demand_lock:
+            playback_demands[(key, n)] += 1
+    try:
+        work_check(key)
+        yield
+    finally:
+        if tracked:
+            with playback_demand_lock:
+                playback_demands[(key, n)] -= 1
+                if not playback_demands[(key, n)]:
+                    del playback_demands[(key, n)]
+        playback_local.request = previous
+
+
+def playback_position_report(key, token, s, seconds, seq, seek=False):
+    """Player progress owns the playhead; downloads and stale controls do not."""
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError("invalid position")
+    with playback_lock:
+        old_seq = s.get("seek_seq", 0)
+        if (seek and seq <= old_seq) or (not seek and (not s.get("managed") or seq < old_seq)):
+            return
+        # A progress report also repairs a lost seek control once playback
+        # resumes. Reports from earlier seeks can never supersede it.
+        seek = seek or seq > old_seq
+        if not seek and seconds + .5 < s.get("position", 0):
+            return
+        mode = s.get("mode", "converted")
+        if mode == "as-is":
+            return
+        orig = mode in ("original", "remux")
+        n = playback_position(probed[key], seconds, orig)
+        s.update(position=seconds, position_seen=time.monotonic())
+        if seek:
+            s.update(seek_seq=seq, seek_head=n)
+        film_heard(key, token, n, "remux" if mode == "remux" else "orig" if orig else "conv")
+
+
+def media_task(fn):
+    def run(key, *args, **kwargs):
+        base = key.split(":", 1)[0]
+        previous = getattr(playback_local, "epochs", {})
+        playback_local.epochs = {**previous, base: previous.get(base, playback_epochs[base])}
+        try:
+            work_check(base)
+            return fn(key, *args, **kwargs)
+        finally:
+            playback_local.epochs = previous
+    run.__name__ = fn.__name__
+    return run
+
+
+def playback_users(key):
+    now = time.monotonic()
+    return sum(s["key"] == key and not s["closed"] and now - s["seen"] < PLAYBACK_TTL
+               for s in list(playback_sessions.values()))
+
+
+def playback_touch(key, sid, mode=None):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,96}", sid):
+        raise ValueError("invalid playback session")
+    with playback_lock:
+        s = playback_sessions.get(sid)
+        if s and (s["closed"] or s["key"] != key):
+            raise Dropped("this playback session has ended")
+        if s is None:
+            if len(playback_sessions) >= 4096:
+                raise ValueError("too many playback sessions")
+            s = playback_sessions[sid] = {"key": key, "closed": False, "seen": time.monotonic()}
+            s["expired"] = True
+        if s.pop("expired", False):
+            playback_stopped.discard(key)
+            if films.get(key, {}).get("stopped"):
+                films.pop(key, None)
+        s["seen"] = time.monotonic()
+        if mode:
+            s["mode"] = mode
+        return s
+
+
+def stop_film(key):
+    """Called with playback_lock held; finished cache entries remain reusable."""
+    playback_stopped.add(key)
+    playback_epochs[key] += 1
+    f = films.get(key)
+    if f:
+        f.update(stopped=True, seen=0)
+        f["wake"].set()
+    with cpu_cond:
+        for (k, _), job in list(cpu_jobs.items()):
+            if k.split(":", 1)[0] == key:
+                job["dropped"] = True
+                if job["p"]:
+                    try:
+                        job["p"].kill()
+                    except OSError:
+                        pass
+        cpu_cond.notify_all()
+    with media_process_lock:
+        for p, k in list(media_processes.items()):
+            if k == key:
+                try:
+                    p.kill()
+                except OSError:
+                    pass
+    calls = []
+    with mac_lock:
+        for (k, _), job in list(mac_jobs.items()):
+            if k == key:
+                job["dropped"] = True
+                job["news"].put(None)
+                calls.extend(job["calls"])
+    with hls_lock:
+        calls.extend(r for r in list(runs.values()) if r["key"] == key)
+        calls.extend(src_meta.get(key, {}).get("lookup_calls", []))
+    for call in calls:
+        end_call(call)
+    with turns:
+        turns.notify_all()
+
+
+def playback_release(key, sid):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,96}", sid):
+        raise ValueError("invalid playback session")
+    with playback_lock:
+        s = playback_sessions.get(sid)
+        if s and s["key"] != key:
+            raise ValueError("session does not belong to this stream")
+        # Closing can beat the first playlist: its late arrival must stay closed.
+        playback_sessions[sid] = {"key": key, "closed": True, "seen": time.monotonic()}
+        for call in list(runs.values()):
+            if call.get("sid") == sid:
+                end_call(call)
+        legacy = time.time() - src_meta.get(key, {}).get("legacy_seen", 0) < PLAYBACK_TTL
+        if not playback_users(key) and not legacy:
+            stop_film(key)
+
+
+def playback_sweep():
+    with playback_lock:
+        now = time.monotonic()
+        for sid, s in list(playback_sessions.items()):
+            if s["closed"] or s.get("expired"):
+                if now - s["seen"] > PLAYBACK_TOMBSTONE:
+                    playback_sessions.pop(sid, None)
+            elif now - s["seen"] >= PLAYBACK_TTL:
+                # Safari may suspend JS while buffered video keeps playing in
+                # PiP. Idle work is cancelled, but later media demand may renew
+                # this lease. Explicitly stopped leases never renew.
+                s["expired"] = True
+                key = s["key"]
+                legacy = time.time() - src_meta.get(key, {}).get("legacy_seen", 0) < PLAYBACK_TTL
+                if not playback_users(key) and not legacy:
+                    stop_film(key)
+
+
+def playback_loop():
+    while True:
+        playback_sweep()
+        time.sleep(2)
+
+
+def media_run(key, cmd, body=None, timeout=60):
+    """Track probe/remux/audio processes so switching stops those jobs too."""
+    with media_process_lock:
+        work_check(key)
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE if body is not None else subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        media_processes[p] = key
+    try:
+        out, err = p.communicate(body, timeout=timeout)
+        work_check(key)
+        return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+    except BaseException:
+        p.kill()
+        p.communicate()
+        raise
+    finally:
+        with media_process_lock:
+            media_processes.pop(p, None)
+
+
+def playback_query(query):
+    return "".join("&" + urllib.parse.urlencode({k: query[k][0]})
+                   for k in ("sid", "start", "force", "cap", "managed") if query.get(k))
+
+
+def playback_position(info, seconds, orig=False):
+    cuts = info["ocuts" if orig else "cuts"]
+    return max(0, min(len(cuts) - 2, bisect.bisect_right(cuts, max(0, seconds)) - 1))
+
+
+def playback_mode(info, requested, force=False, hevc=False):
+    """Actual metadata wins over filenames. Reuse compatible video."""
+    if force:
+        return "converted"
+    if requested == "original" and not orig_unfit(info):
+        return "original"
+    if (info.get("opos") and info.get("vcodec") == "h264"
+            and info.get("vprofile") in ("Baseline", "Constrained Baseline", "Main", "High")
+            and not info.get("hdr") and info.get("w", 0) <= 1920):
+        return "remux"
+    if requested == "as-is":
+        f = facts_of(info)
+        if f.get("a") and (info.get("vcodec") == "h264" or hevc and info.get("vcodec") == "hevc"):
+            return "as-is"
+        if not orig_unfit(info) and (info.get("vcodec") == "h264" or hevc):
+            return "remux"
+    return "converted"
+# END PLAYBACK LIFECYCLE
+
+# BEGIN HEALTH DASHBOARD
+"""Embedded health dashboard: bounded, shared reads; no monitoring on the media path."""
+
+HEALTH_RUNNERS = os.environ.get("RUNNERS_URL", "https://runners.billybishop4-workers.xyz").rstrip("/")
+HEALTH_INTERVAL = 15
+HEALTH_MAC_HISTORY = ("jobs", "latency_ms", "conversion_s", "cpu_percent", "memory_percent", "network_rx", "network_tx",
+                      "gpu_percent", "memory_used", "memory_total", "disk_percent", "disk_free", "disk_read", "disk_write",
+                      "gpu_memory_used", "gpu_memory_allocated", "gpu_renderer_percent", "gpu_tiler_percent", "cpu_per_core")
+health_lock = threading.Lock()
+health_state = {"sources": {}, "history": {}, "refreshing": False, "attempted": 0}
+
+
+def health_number(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+
+def health_percent(used, total):
+    used, total = health_number(used), health_number(total)
+    return round(used / total * 100, 1) if used is not None and total and total > 0 else None
+
+
+def health_age(now, stamp, milliseconds=False):
+    stamp = health_number(stamp)
+    return max(0, now - stamp / (1000 if milliseconds else 1)) if stamp else None
+
+
+def health_read(url):
+    request = urllib.request.Request(url, headers={"User-Agent": "Frame-health/1.0", "Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=4) as response:
+        data = response.read(2 * 1024 * 1024 + 1)
+        if len(data) > 2 * 1024 * 1024:
+            raise ValueError("Metrics response too large")
+        value = json.loads(data)
+        if not isinstance(value, dict):
+            raise ValueError("Invalid metrics response")
+        return value
+
+
+def health_error(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return "HTTP " + str(error.code)
+    return "Connection timed out" if isinstance(error, (TimeoutError, socket.timeout)) else "Service unreachable"
+
+
+def health_refresh():
+    targets = {"fleet": HEALTH_RUNNERS + "/api/status", "metrics": HEALTH_RUNNERS + "/api/metrics?range=1h"}
+    targets.update({"mac:" + mac_name(url): url + "/healthz" for url in MAC_URLS})
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="health") as pool:
+            tasks = {pool.submit(health_fetch_timed, url): name for name, url in targets.items()}
+            for task in concurrent.futures.as_completed(tasks):
+                name, now = tasks[task], time.time()
+                try:
+                    value, latency = task.result()
+                    if name.startswith("mac:") and value.get("ok") is not True:
+                        raise ValueError("Worker not ready")
+                    if name == "fleet" and not isinstance(value.get("runs"), list):
+                        raise ValueError("Invalid fleet state")
+                    if name == "metrics" and not isinstance(value.get("live"), dict):
+                        raise ValueError("Invalid machine metrics")
+                    with health_lock:
+                        health_state["sources"][name] = {"data": value, "at": now, "checked": now, "error": None, "latency_ms": latency}
+                        if name.startswith("mac:"):
+                            row = health_mac(name[4:], health_state["sources"][name], now)
+                            history = health_state["history"].setdefault(name, collections.deque(maxlen=240))
+                            history.append([now] + [None if (i >= 3 and row["resource_stale"]) or (field.startswith("gpu_") and row["gpu_stale"])
+                                                    else row[field] for i, field in enumerate(HEALTH_MAC_HISTORY)])
+                except Exception as error:
+                    with health_lock:
+                        previous = health_state["sources"].get(name, {})
+                        health_state["sources"][name] = {**previous, "checked": now, "error": health_error(error)}
+                        if name.startswith("mac:"):
+                            health_state["history"].setdefault(name, collections.deque(maxlen=240)).append([now] + [None] * len(HEALTH_MAC_HISTORY))
+        with health_lock:
+            now = time.time()
+            nodes = health_fleet(health_state["sources"].get("fleet", {}), health_state["sources"].get("metrics", {}), now)
+            active = {"host:" + row["id"] for row in nodes}
+            for key in list(health_state["history"]):
+                if key.startswith("host:") and key not in active:
+                    del health_state["history"][key]
+            for row in nodes:
+                fields = ("cpu_percent", "memory_percent", "network_rx", "network_tx", "memory_used", "memory_total",
+                          "disk_read", "disk_write", "disk_percent", "disk_free")
+                health_state["history"].setdefault("host:" + row["id"], collections.deque(maxlen=240)).append(
+                    [now] + [None if row["stale"] else row[field] for field in fields])
+    finally:
+        with health_lock:
+            health_state["refreshing"] = False
+
+
+def health_fetch_timed(url):
+    start = time.monotonic()
+    value = health_read(url)
+    return value, round((time.monotonic() - start) * 1000)
+
+
+def health_mac(name, source, now):
+    data = source.get("data") or {}
+    age = health_age(now, source.get("at"))
+    known = bool(data)
+    stale = age is None or age > 45 or bool(source.get("error"))
+    state = "offline" if source.get("error") else "loading" if not known else "stale" if stale else "attention" if data.get("stuck", 0) else "draining" if data.get("draining") else "busy" if data.get("jobs", 0) else "healthy"
+    recent_jobs = [row for row in data.get("recent", []) if isinstance(row, dict)][-8:]
+    times = sorted(x for row in recent_jobs if (x := health_number(row.get("convert_s"))) is not None)
+    median = (times[(len(times)-1)//2] + times[len(times)//2]) / 2 if times else None
+    resources = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+    resource_age = health_age(now, resources.get("sample_at"))
+    resource_stale = stale or resource_age is None or resource_age > 30 or bool(resources.get("error"))
+    fields = ("cpu_percent", "cpus", "memory_used", "memory_total", "memory_percent", "disk_free", "disk_total", "disk_percent",
+              "network_rx", "network_tx", "disk_read", "disk_write", "network_errors_rx", "network_errors_tx",
+              "network_drops_rx", "network_drops_tx", "uptime_s", "sample_cost_ms", "gpu_percent", "gpu_renderer_percent",
+              "gpu_tiler_percent", "gpu_memory_used", "gpu_memory_allocated", "gpu_devices")
+    gpu_state = resources.get("gpu_state") if resources.get("gpu_state") in ("available", "unavailable", "error") else "pending"
+    gpu_age = health_age(now, resources.get("gpu_sample_at"))
+    gpu_stale = resource_stale or gpu_state == "error" or (gpu_state == "available" and (gpu_age is None or gpu_age > 30))
+    return {"id": name, "name": "Mac mini " + name.rsplit("-", 1)[-1], "state": state, "online": known and not stale,
+            "checked_at": source.get("checked"), "last_seen": source.get("at"), "stale": stale,
+            "error": source.get("error"), "jobs": health_number(data.get("jobs")), "capacity": health_number(data.get("max")),
+            "done": health_number(data.get("done")), "failed": health_number(data.get("failed")),
+            "canceled": health_number(data.get("ended")), "stuck": health_number(data.get("stuck")),
+            "engine": data.get("engine"), "revision": str(data.get("revision") or "")[:12],
+            "latency_ms": source.get("latency_ms"), "conversion_s": round(median, 3) if median is not None else None,
+            "last_conversion_at": max((row.get("at", 0) for row in recent_jobs), default=0) or None,
+            "history": [], "resource_metrics": bool(resources.get("sample_at")), "resource_stale": resource_stale,
+            "resource_sample_at": resources.get("sample_at"), "resource_error": resources.get("error"),
+            "gpu_state": gpu_state, "gpu_stale": gpu_stale, "gpu_sample_at": resources.get("gpu_sample_at"),
+            "cpu_per_core": [health_number(n) for n in resources.get("cpu_per_core", [])[:256]] if isinstance(resources.get("cpu_per_core"), list) else [],
+            **{key: str(resources[key])[:160] if resources.get(key) is not None else None
+               for key in ("gpu_name", "gpu_reason", "gpu_error")},
+            **{field: health_number(resources.get(field)) for field in fields}}
+
+
+def health_replica_number(name):
+    if name == APP:
+        return 1
+    match = re.fullmatch(re.escape(APP) + r"-r([1-9][0-9]*)", name)
+    return int(match.group(1)) if match else None
+
+
+def health_replica_hosts(state, latest):
+    """Current application placement owns scope, including unavailable hosts."""
+    hosts = {}
+    if isinstance(state.get("projects"), list):
+        project = next((p for p in state["projects"] if p.get("name") == APP), None)
+        if project is None:
+            return hosts
+        if isinstance(project.get("placed"), list):
+            for placement in project["placed"]:
+                number, replica = str(placement.get("machine", "")), placement.get("replica")
+                if number.isdigit():
+                    hosts.setdefault(number, set())
+                    if isinstance(replica, int) and replica > 0:
+                        hosts[number].add(replica)
+            return hosts
+    # Compatibility for a status feed without the application-placement list.
+    for number, run in latest.items():
+        replicas = {n for name in (run.get("projects") or {}) if (n := health_replica_number(name)) is not None}
+        if replicas:
+            hosts[number] = replicas
+    return hosts
+
+
+def health_fleet(status_source, metrics_source, now):
+    state, metrics = status_source.get("data") or {}, metrics_source.get("data") or {}
+    latest = {}
+    for run in state.get("runs", []):
+        number = str(run.get("machine", ""))
+        if not number.isdigit():
+            continue
+        if number not in latest or run.get("started", 0) > latest[number].get("started", 0):
+            latest[number] = run
+    hosts = health_replica_hosts(state, latest)
+    numbers = sorted(hosts, key=int)
+    nodes = []
+    for number in numbers:
+        run = latest.get(number, {})
+        sample = metrics.get("live", {}).get(number, {})
+        same_run = bool(run.get("id") and sample.get("run") == run["id"])
+        h = sample.get("h", {}) if same_run else {}
+        age = health_age(now, sample.get("t"), True) if same_run else None
+        seen_age = health_age(now, run.get("seen"), True)
+        stale = (age is None or age > 180 or bool(metrics_source.get("error")) or bool(status_source.get("error"))
+                 or (health_age(now, status_source.get("at")) or 0) > 45)
+        disk = run.get("disk") or {}
+        disk_total, disk_free = health_number(disk.get("total")), health_number(disk.get("free"))
+        disk_used = disk_total - disk_free if disk_total is not None and disk_free is not None else None
+        cpu, ram = health_number(h.get("cpu")), health_percent(h.get("memUsed"), h.get("memTotal"))
+        disk_pct = health_percent(disk_used, disk_total)
+        reasons = []
+        if cpu is not None and cpu >= 90: reasons.append("High CPU use")
+        if ram is not None and ram >= 90: reasons.append("High memory use")
+        if disk_pct is not None and disk_pct >= 90: reasons.append("Low free disk space")
+        projects = {name: p for name, p in (run.get("projects") or {}).items() if health_replica_number(name) is not None}
+        bad_apps = sum(p.get("s") in ("unhealthy", "failed", "exited", "dead") for p in projects.values() if isinstance(p, dict))
+        if bad_apps: reasons.append(str(bad_apps) + " unhealthy Frame replicas")
+        offline = not run.get("live") or seen_age is None or seen_age > 180
+        status = ("offline" if offline else "draining" if run.get("draining") or run.get("retiring") or run.get("departing")
+                  else "starting" if not run.get("ready") else "stale" if stale else "attention" if reasons else "healthy")
+        history = metrics.get("m", {}).get(number, {}).get("h", {})
+        history_rows = []
+        for i, stamp in enumerate(metrics.get("t", [])[-61:]):
+            offset = max(0, len(metrics.get("t", [])) - 61) + i
+            def at(key):
+                values = history.get(key, [])
+                return health_number(values[offset]) if offset < len(values) else None
+            history_rows.append([stamp / 1000, at("cpu"), health_percent(at("memUsed"), at("memTotal")), at("netRx"), at("netTx"), at("memUsed"), at("memTotal"), at("diskRead"), at("diskWrite")])
+        workloads = []
+        for replica in sorted(hosts[number]):
+            values = next((row.get("values", {}) for row in sample.get("replicas", {}).values()
+                           if row.get("app") == APP and row.get("replica") == replica), {}) if same_run else {}
+            if not values and same_run and len(hosts[number]) == 1:
+                values = sample.get("a", {}).get(APP, {})
+            workload = {"replica": replica, "cpu_cores": health_number(values.get("cpu")), "memory_bytes": health_number(values.get("mem")),
+                        "network_rx": health_number(values.get("netRx")), "network_tx": health_number(values.get("netTx")),
+                        "disk_read": health_number(values.get("diskRead")), "disk_write": health_number(values.get("diskWrite"))}
+            if workload["cpu_cores"] is not None:
+                workload["cpu_cores"] /= 100
+            runtime = projects.get(APP if replica == 1 else APP + "-r" + str(replica), {})
+            runtime_state = runtime.get("s") if isinstance(runtime, dict) else None
+            workload["state"] = ("offline" if offline else "stale" if stale else
+                                 "healthy" if runtime_state in ("healthy", "running") else
+                                 "attention" if runtime_state in ("unhealthy", "failed", "exited", "dead") else "starting")
+            workloads.append(workload)
+        nodes.append({"id": number, "name": run.get("label") or "Machine " + number, "state": status,
+                      "online": not offline and not status_source.get("error") and (health_age(now, status_source.get("at")) or 0) <= 45,
+                      "region": run.get("region"), "pool": run.get("pool"), "location": run.get("location"),
+                      "cpu_percent": cpu, "cpus": health_number(run.get("cpus")), "memory_percent": ram,
+                      "memory_used": health_number(h.get("memUsed")), "memory_total": health_number(h.get("memTotal")),
+                      "disk_percent": disk_pct, "disk_free": disk_free, "disk_total": disk_total,
+                      "network_rx": health_number(h.get("netRx")), "network_tx": health_number(h.get("netTx")),
+                      "disk_read": health_number(h.get("diskRead")), "disk_write": health_number(h.get("diskWrite")),
+                      "latency_ms": health_number(run.get("rtt")), "started_at": (run.get("started") or 0) / 1000 or None,
+                      "last_seen": (run.get("seen") or 0) / 1000 or None,
+                      "sample_at": (sample.get("t") or 0) / 1000 if same_run else None,
+                      "stale": stale or offline, "reasons": reasons, "apps": len(projects),
+                      "runs_frame": True, "replicas": sorted(hosts[number]), "workloads": workloads, "history": history_rows})
+    return nodes
+
+
+def health_service():
+    now = time.monotonic()
+    active = [s for s in list(playback_sessions.values()) if not s["closed"] and now - s["seen"] < PLAYBACK_TTL]
+    cutoff = time.time() - 300
+    delivered = sorted(row[3] for row in list(bstats["served"]) if row[0] >= cutoff)
+    fetches = [row for row in list(bstats["vps"]) if row[0] >= cutoff]
+    fetched_seconds = sum(row[1] for row in fetches)
+    modes = collections.Counter(s.get("mode", "starting") for s in active)
+    return {"replica": REPLICA, "code": CODE,
+            "sessions": len(active), "modes": dict(modes),
+            "media_processes": len(media_processes), "cpu_jobs": len(cpu_jobs), "mac_jobs": len(mac_jobs),
+            "reads": sum(up_now.values()), "queued": len(up_wait) + len(send_wait),
+            "cache_bytes": mem_size["n"], "lookahead_pieces": HLS_AHEAD,
+            "segment_samples": len(delivered),
+            "segment_p50_ms": round((delivered[(len(delivered)-1)//2]+delivered[len(delivered)//2])*500) if delivered else None,
+            "segment_p95_ms": round(delivered[min(len(delivered)-1, math.ceil(len(delivered)*.95)-1)]*1000) if delivered else None,
+            "source_fetch_mbps": round(sum(row[2] for row in fetches)*8/fetched_seconds/1e6, 1) if fetched_seconds else None,
+            "paused_sources": sum(v.get("until", 0) > time.time() for v in list(src_trouble.values()))}
+
+
+def health_dashboard():
+    now = time.time()
+    launch = False
+    with health_lock:
+        if not health_state["refreshing"] and now - health_state["attempted"] >= HEALTH_INTERVAL:
+            health_state.update(refreshing=True, attempted=now)
+            launch = True
+        sources = dict(health_state["sources"])
+        mac_nodes = []
+        for url in MAC_URLS:
+            name = mac_name(url)
+            row = health_mac(name, sources.get("mac:" + name, {}), now)
+            row["history"] = list(health_state["history"].get("mac:" + name, []))
+            mac_nodes.append(row)
+        machine_nodes = health_fleet(sources.get("fleet", {}), sources.get("metrics", {}), now)
+        for row in machine_nodes:
+            row["observed_history"] = list(health_state["history"].get("host:" + row["id"], []))
+        result = {"now": now, "refreshing": health_state["refreshing"], "poll_seconds": HEALTH_INTERVAL,
+                  "macs": mac_nodes, "machines": machine_nodes,
+                  "sources": {name: {k: value.get(k) for k in ("at", "checked", "error")} for name, value in sources.items()},
+                  "service": health_service(), "scope": {"app": APP, "machines": "replica_hosts"}, "runners_url": HEALTH_RUNNERS}
+    if launch:
+        threading.Thread(target=health_refresh, daemon=True, name="health-refresh").start()
+    return result
+# END HEALTH DASHBOARD
+
 def hls_token(gurl, file_id=""):
 
 
@@ -1873,12 +2426,15 @@ def open_token(token):
     return key, gurl
 
 
+@media_task
 def src_lookup(key, again=False):
 
 
 
 
     m, t0 = src_meta[key], time.time()
+    if m.get("lookup_err") and t0 - m.get("lookup_failed", 0) < 8:
+        raise RuntimeError(m["lookup_err"])
     for _ in range(2):
         if m["url"] and time.time() - m["t"] < 1200 and (not again or m["t"] >= t0):
             return m
@@ -1887,6 +2443,7 @@ def src_lookup(key, again=False):
     raise RuntimeError(m.get("lookup_err") or "the source's address wasn't found")
 
 
+@media_task
 def src_find(key):
 
 
@@ -1895,7 +2452,13 @@ def src_find(key):
 
     m = src_meta[key]
     try:
-        st, h, _ = conns.request("GET", m["gurl"], headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
+        call = {}
+        m.setdefault("lookup_calls", []).append(call)
+        try:
+            st, h, _ = conns.request("GET", m["gurl"], headers={"User-Agent": "Mozilla/5.0"}, timeout=15, hold=call)
+        finally:
+            m["lookup_calls"].remove(call)
+        work_check(key)
         if st not in (301, 302, 303, 307, 308):
             raise RuntimeError(f"the gdrive link answered HTTP {st}")
         url = urllib.parse.urljoin(m["gurl"], h.get("Location"))
@@ -1909,6 +2472,7 @@ def src_find(key):
             st, h, _ = conns.request("GET", url, headers={"Range": "bytes=0-0", "User-Agent": "Mozilla/5.0"}, timeout=60)
             if st != 206:
                 raise RuntimeError(f"the source answered HTTP {st} for a range")
+            m.pop("lookup_err", None)
             m.update(url=url, size=int(h.get("Content-Range").split("/")[1]), t=time.time())
             return m
         u = urllib.parse.urlsplit(url)
@@ -1920,6 +2484,7 @@ def src_find(key):
             if r.status != 206:
                 raise RuntimeError(f"the source answered HTTP {r.status} for a range")
             size = int(r.getheader("Content-Range").split("/")[1])
+            m.pop("lookup_err", None)
             m.update(url=url, size=size, t=time.time())
             known.at = time.time()
             known.set()
@@ -1942,7 +2507,9 @@ def src_find(key):
                 turns.notify_all()
         return m
     except Exception as err:
+        work_check(key)
         m["lookup_err"] = f"{err.__class__.__name__}: {err}"
+        m["lookup_failed"] = time.time()
         raise
 
 
@@ -1955,7 +2522,9 @@ def once(kind, key, n, make):
         if first:
             ev = busy[k] = threading.Event()
     if not first:
-        ev.wait(600)
+        while not ev.wait(.2):
+            work_check(key)
+        work_check(key)
         return None
     try:
         return make()
@@ -2005,7 +2574,7 @@ def wanted_block(key, b, urgent=True):
 def watched(key):
 
     f = films.get(key)
-    return f is not None and time.time() - f["seen"] < FILM_LEFT
+    return f is not None and not f.get("stopped") and time.time() - f["seen"] < FILM_LEFT
 
 
 def bg_rate(key):
@@ -2031,7 +2600,7 @@ def settled():
     for k, f in list(films.items()):
         if now - f.get("seen", 0) >= FILM_LEFT:
             continue
-        orig = f.get("variant") == "orig"
+        orig = f.get("variant") in ("orig", "remux")
         pk, done, head = k + ORIG if orig else k, () if orig else f.get("done", ()), f["head"]
         if now - f.get("jumped", 0) < JUMP_ALONE or any((pk, m) not in pieces and (pk, m) not in mem_pieces and m not in done
                                                         for m in range(head + 1, min(f.get("total") or 10**9, head + 1 + HLS_AHEAD))):
@@ -2050,7 +2619,8 @@ def read_alone(key, n):
 
 
 def far(key, n):
-
+    if playback_requested(key, n):
+        return False
     f = films.get(key)
     return (f is not None and n is not None
             and not f["head"] - 2 <= n <= f["head"] + max(HLS_AHEAD, f.get("buffer_end", f["head"]) - f["head"]))
@@ -2083,6 +2653,12 @@ def upstream_turn(key, b, n, urgent, count=1):
     with turns:
         w = up_wait[k] = {"urgent": urgent, "n": n, "light": not urgent and key in facts_gentle}
         while k not in reading and k not in src_blocks:
+            try:
+                work_check(key)
+            except Dropped:
+                up_wait.pop(k, None)
+                turns.notify_all()
+                raise
             now = time.time()
             if w["urgent"]:
                 d = from_player(key, w["n"])
@@ -2129,7 +2705,7 @@ def landing_pending(key):
     if land is None or time.time() - f.get("jumped", 0) >= JUMP_ALONE or not src_meta.get(key, {}).get("size"):
         return False
     try:
-        pb, pe, _ = piece_span(key, land, f.get("variant") == "orig")
+        pb, pe, _ = piece_span(key, land, f.get("variant") in ("orig", "remux"))
     except Exception:
         return False
     return any(not block_here(key, b, pb) for b in range(pb // SRC_BLOCK, (pe - 1) // SRC_BLOCK + 1))
@@ -2165,6 +2741,12 @@ def send_turn(key, n, urgent):
         send_wait[me] = (key, n)
         while not (send_now["n"] < SEND_MAX and (urgent or not any(landing_pending(k) for k in list(films)))
                    and min(send_wait, key=lambda x: (x[0], from_player(*send_wait[x]), x[1])) == me):
+            try:
+                work_check(key)
+            except Dropped:
+                send_wait.pop(me, None)
+                turns.notify_all()
+                raise
             turns.wait(0.5)
         del send_wait[me]
         send_now["n"] += 1
@@ -2176,6 +2758,7 @@ def send_turn(key, n, urgent):
             turns.notify_all()
 
 
+@media_task
 def src_block(key, b, urgent=True, n=None):
 
 
@@ -2187,6 +2770,7 @@ def src_block(key, b, urgent=True, n=None):
     urgent = urgent and key not in facts_gentle
     tried = False
     while data is None:
+        work_check(key)
         if urgent and here:
             if tried and far(key, n):
                 raise Dropped(f"the source's block {b}: for a piece no longer wanted")
@@ -2348,6 +2932,7 @@ def land_take(key, r, span, left, size, urgent, t0):
         yield nb
 
 
+@media_task
 def read_run(key, blocks, urgent, n, arrived, result, span=None):
 
 
@@ -2372,6 +2957,7 @@ def read_run(key, blocks, urgent, n, arrived, result, span=None):
             ev.set()
     try:
         while tries < 4:
+            work_check(key)
             st, src = None, src_lookup(key, again=tries == 2 or (st is not None and 400 <= st < 500))
 
             with hls_lock:
@@ -2499,7 +3085,7 @@ def land_read(key, m):
 
 
     info, f, size = probed.get(key), films.get(key), src_meta.get(key, {}).get("size")
-    if not info or not info.get("pos") or f is None or not size or f.get("variant") == "orig":
+    if not info or not info.get("pos") or f is None or not size or f.get("variant") in ("orig", "remux"):
         return
     try:
         pb, pe, _ = piece_span(key, m)
@@ -2575,9 +3161,11 @@ def drop_reads(key, head, span):
 
 
     f = films.get(key) or {}
-    quiet = not piece_has(key + ORIG if f.get("variant") == "orig" else key, head)
+    quiet = not piece_has(key + ORIG if f.get("variant") in ("orig", "remux") else key, head)
     with hls_lock:
-        far = [run for run in runs.values() if run["key"] == key and ((quiet and run["bg"]) or run["n"] is not None and not head - 2 <= run["n"] <= head + span)]
+        far = [run for run in runs.values() if run["key"] == key
+               and not playback_requested(key, run["n"])
+               and ((quiet and run["bg"]) or run["n"] is not None and not head - 2 <= run["n"] <= head + span)]
     for run in far:
         end_call(run)
 
@@ -2604,6 +3192,7 @@ def probe_keep(key, info):
     os.replace(probe_path(key) + ".new", probe_path(key))
 
 
+@media_task
 def probe_source(key):
 
 
@@ -2625,9 +3214,9 @@ def lookup_begin(key):
 
     with hls_lock:
         out = src_meta[key].get("finding")
-        if out is not None and not out["known"].is_set():
+        if out is not None and not out["known"].is_set() and out.get("epoch") == playback_epochs[key]:
             return out
-        out = src_meta[key]["finding"] = {"known": threading.Event(), "at": time.time()}
+        out = src_meta[key]["finding"] = {"known": threading.Event(), "at": time.time(), "epoch": playback_epochs[key]}
     threading.Thread(target=lookup_now, args=(key, out), daemon=True).start()
     return out
 
@@ -2639,6 +3228,7 @@ def lookup_now(key, out):
 
 
     known = out.setdefault("known", threading.Event())
+    playback_local.epochs = {key: out["epoch"]}
     try:
         for _ in range(LOOKUP_TRIES):
             try:
@@ -2678,6 +3268,7 @@ def probe_blocks(key, kf=None):
             threading.Thread(target=quietly, args=(src_block, key, b, True, None), daemon=True).start()
 
 
+@media_task
 def probe_now(key):
 
 
@@ -2725,10 +3316,10 @@ def probe_now(key):
     t = threading.Thread(target=index, daemon=True)
     t.start()
     t2 = time.time()
-    out = subprocess.run(["ffprobe", "-v", "error", "-headers", f"X-Tor-Key: {CHUNK_KEY}\r\n", "-show_entries",
+    out = media_run(key, ["ffprobe", "-v", "error", "-headers", f"X-Tor-Key: {CHUNK_KEY}\r\n", "-show_entries",
                           "format=duration,size,start_time,format_name:stream=index,codec_type,codec_name,codec_tag_string,profile,level,width,height,pix_fmt,"
                           "color_transfer,r_frame_rate,channels:stream_tags=language,title:stream_side_data=side_data_type,dv_profile",
-                          "-of", "json", f"http://127.0.0.1:{PAGE_PORT}/src/{key}?u=1"], capture_output=True, timeout=120)
+                          "-of", "json", f"http://127.0.0.1:{PAGE_PORT}/src/{key}?u=1"], timeout=30)
     took = time.time() - t2
     t.join(120)
     info = json.loads(out.stdout or b"{}")
@@ -3205,7 +3796,7 @@ def piece_load():
     found = []
     for key in os.listdir(SEG_DIR) if os.path.isdir(SEG_DIR) else []:
         for name in os.listdir(f"{SEG_DIR}/{key}"):
-            if name.isdigit():
+            if name.isdigit() or name == "-1":
                 st = os.stat(f"{SEG_DIR}/{key}/{name}")
                 found.append((st.st_mtime, key, int(name), st.st_size))
     for _, key, n, size in sorted(found):
@@ -3330,9 +3921,12 @@ def drop_far(key, head, span):
 
 
 
+    if playback_users(key) > 1:
+        return
+    span = HLS_AHEAD
     with cpu_cond:
         for (k, n), j in list(cpu_jobs.items()):
-            if k == key and j["cls"] == 0 and not head - 2 <= n <= head + HLS_AHEAD:
+            if k == key and not head - 2 <= n <= head + HLS_AHEAD and not playback_requested(key, n):
                 j["dropped"] = True
                 if j["p"]:
                     try:
@@ -3342,9 +3936,11 @@ def drop_far(key, head, span):
         cpu_cond.notify_all()
     with mac_lock:
         for (k, n), job in list(mac_jobs.items()):
-            if k == key and not job["dropped"] and not head - 2 <= n <= head + (HLS_AHEAD if job["cls"] == 0 else span):
+            if k == key and not job["dropped"] and not head - 2 <= n <= head + (HLS_AHEAD if job["cls"] == 0 else span) and not playback_requested(key, n):
                 job["dropped"] = True
                 job["news"].put(None)
+                for call in job["calls"]:
+                    end_call(call)
     drop_reads(key, head, span)
 
 
@@ -3383,6 +3979,7 @@ def run_ffmpeg(cmd, key, n, cls):
 
 
     with cpu_cond:
+        work_check(key)
         j = cpu_jobs[(key, n)] = {"cls": cls, "t": time.time(), "p": None, "best": None, "dropped": False}
 
         def turn():
@@ -3390,10 +3987,10 @@ def run_ffmpeg(cmd, key, n, cls):
                 running = [x for x in cpu_jobs.values() if x["p"] and x["cls"] == 0]
                 waiting = [it for it in cpu_jobs.items() if not it[1]["p"] and it[1]["cls"] == 0]
                 return len(running) < PLAYER_RUNS and min(waiting, key=job_rank)[1] is j
-            return j["cls"] == 1 or (sum(1 for x in cpu_jobs.values() if x["p"]) < FFMPEG_MAX
+            return (j["cls"] == 1 and sum(1 for x in cpu_jobs.values() if x["p"] and x["cls"] > 0) < max(1, FFMPEG_MAX - PLAYER_RUNS)) or (j["cls"] > 1 and sum(1 for x in cpu_jobs.values() if x["p"]) < FFMPEG_MAX
                                      and min((it for it in cpu_jobs.items() if not it[1]["p"]), key=job_rank)[1] is j)
         while not j["dropped"] and not turn():
-            cpu_cond.wait(1)
+            cpu_cond.wait(.2)
         if j["dropped"]:
             cpu_jobs.pop((key, n), None)
             cpu_cond.notify_all()
@@ -3449,6 +4046,7 @@ def piece_cmd(key, n, a, hdr, w, cls, t, end, pe, keys="0"):
             "-output_ts_offset", f"{TS_BASE - s0:.3f}", "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", "pipe:1"]
 
 
+@media_task
 def convert(key, n, a, hdr, w, cls, cut):
 
 
@@ -3494,6 +4092,7 @@ in_run = {}
 runs_off = {}
 
 
+@media_task
 def convert_run(key, ns, a, hdr, w, cuts, cls=2):
 
 
@@ -3902,8 +4501,7 @@ def browser_streams(kind, sid, base, as_is=False):
                 keys.setdefault(e["k"], e["url"].split("/")[-2])
         return keys
     origs = [e for e in out if e["name"].startswith("🎞")]
-    want = first_of(origs, 1)
-    want.update(first_of([e for e in out if e.get("apple")], 1))
+    want = {}
     for key, tok in first_of(origs, FACTS_FIRST).items():
         want.setdefault(key, tok)
     for key, tok in want.items():
@@ -4054,18 +4652,20 @@ def first_blocks(key, orig):
             threading.Thread(target=quietly, args=(src_block, key, b, True, 0), daemon=True).start()
 
 
-def first_pieces(key, info, orig, waits):
-
-
-
-    if waits:
-        threading.Thread(target=quietly, args=(first_blocks, key, orig), daemon=True).start()
-    for n in range(0 if orig else HLS_LOCAL):
-        if piece_get(key, n) is None:
-            args = (reader_piece, key, n, muxed(info), info["hdr"], info["w"], piece_cut(key, n)) if waits else (mac_piece, key, n, 1)
-            threading.Thread(target=quietly, args=args, daemon=True).start()
+def first_pieces(key, info, orig, waits, head=0):
+    if not waits:
+        return
+    epoch = playback_epochs[key]
+    def video():
+        if playback_epochs[key] != epoch:
+            return
+        if orig:
+            orig_piece(key, head)
+        else:
+            reader_piece(key, head, muxed(info), info["hdr"], info["w"], piece_cut(key, head))
+    threading.Thread(target=quietly, args=(video,), daemon=True).start()
     if info["a"] >= 0:
-        threading.Thread(target=quietly, args=(audio_piece, key, 0, info["a"], orig), daemon=True).start()
+        threading.Thread(target=quietly, args=(audio_piece, key, head, info["a"], orig), daemon=True).start()
 
 
 def warm_film(token, full=True):
@@ -4103,15 +4703,17 @@ def buffer_film(key):
     def make(m):
         sound = None
         try:
+            if f.get("stopped"):
+                raise Dropped("playback ended")
             track = f.get("audio")
 
-            if track and track[1] == (f.get("variant") == "orig"):
+            if track and bool(track[1]) == (f.get("variant") in ("orig", "remux")):
                 if not track[1] and m > f["head"] + HLS_AHEAD:
                     threading.Thread(target=quietly, args=(fill_audio, key, m), daemon=True).start()
                 else:
                     sound = threading.Thread(target=quietly, args=(audio_piece, key, m, *track), daemon=True)
                     sound.start()
-            if (orig_piece(key, m) if f.get("variant") == "orig" else fetch_piece(key, m)) is None:
+            if (orig_piece(key, m) if f.get("variant") in ("orig", "remux") else fetch_piece(key, m)) is None:
                 failed[m] = time.time()
         except Dropped:
             pass
@@ -4125,9 +4727,9 @@ def buffer_film(key):
                 making.discard(m)
             f["wake"].set()
     try:
-        while time.time() - f["seen"] < FILM_IDLE:
+        while not f.get("stopped") and time.time() - f["seen"] < FILM_IDLE:
             f["wake"].clear()
-            head, orig = f["head"], f.get("variant") == "orig"
+            head, orig = f["head"], f.get("variant") in ("orig", "remux")
             total = len(probed[key]["ocuts"]) - 1 if orig and probed.get(key, {}).get("ocuts") else f["total"]
             n_made, made_bytes = f["made"]
             guess = made_bytes / n_made if n_made else 1.2e6
@@ -4135,7 +4737,7 @@ def buffer_film(key):
             pk = key + ORIG if orig else key
             taken = f.get("fill", {}).get("taken", {})
 
-            for m in range(head + 1, total):
+            for m in range(head + 1, min(total, head + HLS_AHEAD + 1)):
                 size = piece_has(pk, m)
                 ahead += size or guess
                 ready += size
@@ -4190,6 +4792,7 @@ def film_made(key, data):
         f["made"] = (n + 1, total + len(data))
 
 
+@media_task
 def fetch_piece(key, m):
 
 
@@ -4205,13 +4808,14 @@ def fetch_piece(key, m):
             film_made(key, data)
             return data
         owner, have = piece_owner(key, m, REPLICA), f is not None and m in f["done"]
-        run = [m] if have else ready_run(key, m)
+        run = [m]
         try:
             st, h, body = conns.request("GET", f"{url_of(owner)}/hls/{films[key]['token']}/s{m}?{piece_q(key, m)}"
                                         + (run_q(key, run) if len(run) > 1 else "") + "&prep=get", None, {"X-Tor-Key": CHUNK_KEY}, 8 if have else 180)
             if st != 200 or not body:
                 raise RuntimeError(f"piece {m} from copy {owner}: HTTP {st}")
         except Exception:
+            work_check(key)
             if have:
                 with hls_lock:
                     f["done"].discard(m)
@@ -4424,6 +5028,7 @@ def mac_call(call, q, body, job):
 
 
     u = call["u"]
+    call["finish_upload_on_stop"] = True
     try:
         st, _, data = conns.request("POST", f"{u}/convert?{q}&p={min(call['cls'], 1)}", body=body, timeout=MAC_WAIT[call["cls"]], hold=call,
                                     headers={"X-Mac-Key": MAC_KEY, "Content-Type": "application/octet-stream"})
@@ -4439,6 +5044,7 @@ def mac_call(call, q, body, job):
     job["news"].put((call, st, data))
 
 
+@media_task
 def mac_start(key, m, cls, hint=False, run=None):
 
 
@@ -4449,6 +5055,7 @@ def mac_start(key, m, cls, hint=False, run=None):
     if not info or not info["pos"] or not MAC_URLS:
         return None
     with mac_lock:
+        work_check(key)
         job = mac_jobs.get((key, m))
         if job is None or job["dropped"]:
             pieces = [m]
@@ -4656,6 +5263,7 @@ def ts_pieces(data, count, starts=None):
     return pieces
 
 
+@media_task
 def mac_race(key, m, job):
 
 
@@ -4677,6 +5285,9 @@ def mac_race(key, m, job):
             l = round(lt + ll - t, 3)
         t0 = time.time()
         body, a = mac_body(key, m, last)
+        work_check(key)
+        if job["dropped"]:
+            raise Dropped("conversion no longer wanted")
         q = (f"t={info['start'] + t:.3f}&l={l:.3f}&s={info['start']:.3f}&a={a}&h={info['hdr']}&w={info['w']}"
              + ("&k=1" if last != m else ""))
         t1 = time.time()
@@ -4706,7 +5317,7 @@ def mac_race(key, m, job):
             hurried = cls == 0 and live and all(c["cls"] > 0 for c in live)
 
             busy = None
-            while len(live) < (2 if slow or hurried or cls == 0 else 1):
+            while len(live) < (2 if slow or hurried else 1):
 
 
                 u, busy = mac_pick(1 if cls == 0 and live and not (slow or hurried) else cls, skip | {c["u"] for c in live})
@@ -4809,7 +5420,7 @@ def mac_race(key, m, job):
         why = f"{err.__class__.__name__}: {err}"
     finally:
         for c in calls:
-            if not c["over"] and time.time() - c["t"] > MAC_WAIT[c["cls"]]:
+            if not c["over"]:
 
 
                 end_call(c)
@@ -5177,6 +5788,7 @@ def orig_times(init, media, frames, unit, offset):
     return bytes(m)
 
 
+@media_task
 def orig_piece(key, n):
 
 
@@ -5184,7 +5796,7 @@ def orig_piece(key, n):
 
     ok = key + ORIG
     data = piece_get(ok, n)
-    if data is not None:
+    if data is not None and piece_get(ok, -1) is not None:
         return data
 
     def make():
@@ -5196,6 +5808,7 @@ def orig_piece(key, n):
     return once("orig", key, n, make) or piece_get(ok, n)
 
 
+@media_task
 def orig_video(key, n):
 
 
@@ -5225,7 +5838,7 @@ def orig_video(key, n):
            "-tag:v", "hvc1" if info["vcodec"] == "hevc" else "avc1", "-map_chapters", "-1", "-map_metadata", "-1", "-fflags", "+bitexact",
            "-use_editlist", "0", "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont", "-frag_duration", "100000000",
            "-f", "mp4", "pipe:1"]
-    out = subprocess.run(cmd, input=head + mkv_clusters([x[:3] for x in frames]), capture_output=True, timeout=60)
+    out = media_run(key, cmd, head + mkv_clusters([x[:3] for x in frames]), timeout=30)
     cut = next((s for kind, s, _, _ in mp4_boxes(out.stdout) if kind == b"moof"), None)
     if out.returncode or cut is None:
         raise RuntimeError(f"ffmpeg, piece {n} as it is (exit {out.returncode}): {out.stderr.decode(errors='replace')[-300:]}")
@@ -5233,14 +5846,15 @@ def orig_video(key, n):
     return init, orig_times(init, media, [(ts, size) for _, _, ts, size in frames], unit, TS_BASE - s0) or orig_place(init, media, TS_BASE + t)
 
 
+@media_task
 def audio_piece(key, n, a, orig):
 
 
 
 
-    pk = f"{key}:{'o' if orig else 'c'}a{a}"
+    pk = f"{key}:{'r' if orig == 'aac' else 'o' if orig else 'c'}a{a}"
     data = piece_get(pk, n)
-    if data is not None:
+    if data is not None and (not orig or orig == "aac" or piece_get(pk, -1) is not None):
         return data
 
     def make():
@@ -5252,6 +5866,7 @@ def audio_piece(key, n, a, orig):
     return once("audio", pk, n, make) or piece_get(pk, n)
 
 
+@media_task
 def audio_make(key, n, a, orig):
 
     info = probed[key]
@@ -5268,13 +5883,13 @@ def audio_make(key, n, a, orig):
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + src + \
           ["-map", f"0:{a}", "-af", trim + ",asetpts=STARTPTS+N/SR/TB", "-map_metadata", "-1", "-map_chapters", "-1"] + \
           (["-c:a", "flac", "-fflags", "+bitexact", "-use_editlist", "0", "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont",
-            "-frag_duration", "100000000", "-f", "mp4"] if orig else
+            "-frag_duration", "100000000", "-f", "mp4"] if orig and orig != "aac" else
            ["-c:a", "aac", "-ac", "2", "-b:a", "192k", "-output_ts_offset", f"{TS_BASE - s0 + start - first:.6f}", "-muxdelay", "0",
             "-muxpreload", "0", "-f", "mpegts"]) + ["pipe:1"]
-    out = subprocess.run(cmd, input=body, capture_output=True, timeout=60)
+    out = media_run(key, cmd, body, timeout=30)
     if out.returncode or not out.stdout:
         raise RuntimeError(f"ffmpeg, audio piece {n} of track {a} (exit {out.returncode}): {out.stderr.decode(errors='replace')[-300:]}")
-    if not orig:
+    if not orig or orig == "aac":
         return None, out.stdout
     cut = next((s for kind, s, _, _ in mp4_boxes(out.stdout) if kind == b"moof"), None)
     if cut is None:
@@ -5282,7 +5897,7 @@ def audio_make(key, n, a, orig):
     return out.stdout[:cut], orig_place(out.stdout[:cut], out.stdout[cut:], TS_BASE + start - s0)
 
 
-def orig_codecs(info):
+def orig_codecs(info, compatible=False):
 
     if info["vcodec"] == "hevc":
         main10 = "10" in info["vprofile"]
@@ -5290,7 +5905,7 @@ def orig_codecs(info):
     else:
         profile = {"Baseline": 66, "Constrained Baseline": 66, "Main": 77, "High": 100, "High 10": 110}.get(info["vprofile"], 100)
         v = f"avc1.{profile:02x}00{info['vlevel'] or 41:02x}"
-    return v + (",fLaC" if info["audios"] else "")
+    return v + ((",mp4a.40.2" if compatible else ",fLaC") if info["audios"] else "")
 
 
 def audio_run(key, ns, a, keep=True):
@@ -5348,7 +5963,7 @@ def audio_renditions(info, orig):
         code, lang = LANGS.get((x["lang"] or "").lower(), (None, None))
         if not code and x["lang"] and x["lang"].lower() != "und":
             code = lang = x["lang"]
-        ch = x["ch"] if orig else 2
+        ch = x["ch"] if orig and orig != "aac" else 2
         what = x["title"] or " ".join(filter(None, (x["kind"], {1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}.get(x["ch"]))))
         name = re.sub(r'["\n\r]', "'", f"{lang or 'Unknown'} · {what}")
         while name in names:
@@ -5357,7 +5972,7 @@ def audio_renditions(info, orig):
         default = x["i"] == info["a"]
         lines.append(f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="{name}"' + (f',LANGUAGE="{code}"' if code else "") +
                      f',DEFAULT={"YES" if default else "NO"},AUTOSELECT={"YES" if default or (code and code not in langs) else "NO"}'
-                     f',CHANNELS="{ch or 2}",URI="{"o" if orig else "c"}a{x["i"]}.m3u8?r={REPLICA}"')
+                     f',CHANNELS="{ch or 2}",URI="{"r" if orig == "aac" else "o" if orig else "c"}a{x["i"]}.m3u8?r={REPLICA}"')
         langs.add(code)
     return lines
 
@@ -5419,6 +6034,7 @@ def land_race(key, m, hdr, w):
     return True
 
 
+@media_task
 def reader_piece(key, m, a, hdr, w, cut):
 
 
@@ -5438,7 +6054,7 @@ def reader_piece(key, m, a, hdr, w, cut):
             return data, f"owner, copy {piece_owner(key, m, REPLICA)} in {time.time() - t0:.1f}s"
     land_now(key, m)
     job, here = mac_start(key, m, 0), None
-    race = land_race(key, m, hdr, w)
+    race = False  # A healthy hardware worker gets the first attempt; hedge only when it is slow.
     try:
         while True:
             if here is None and (race or job is None or job["here"] or job["done"].is_set()):
@@ -5497,6 +6113,7 @@ def tell_reader(token, key, n, reader, variant=None, when=None):
         pass
 
 
+@media_task
 def film_heard(key, token, head, variant=None, when=None):
 
 
@@ -5504,7 +6121,9 @@ def film_heard(key, token, head, variant=None, when=None):
 
 
     src_meta[key]["reader"] = REPLICA
-    total = len(probe_source(key)["cuts"]) - 1
+    info = probe_source(key)
+    timeline = variant or films.get(key, {}).get("variant")
+    total = len(info["ocuts"] if timeline in ("orig", "remux") else info["cuts"]) - 1
     with hls_lock:
         f = films.setdefault(key, {"token": token, "total": total, "head": head, "seen": 0, "done": set(), "filling": 0, "jumped": time.time(), "landing": head,
                                    "wake": threading.Event(), "buffering": False, "made": (0, 0), "buffer_end": head, "ready_ahead": 0, "heard": 0, "claimed": 0})
@@ -5519,10 +6138,10 @@ def film_heard(key, token, head, variant=None, when=None):
                     f["fill"]["claim"].clear()
             f.update(head=head, heard=max(when, f["heard"]))
         f["seen"] = time.time()
-        if variant in ("orig", "conv"):
+        if variant in ("orig", "remux", "conv") and when >= f["heard"] - 1:
             f["variant"] = variant
-        start = (f["filling"] == 0 and len(f["done"]) < f["total"] and f.get("variant") != "orig"
-                 and time.time() - f.get("fill_end", 0) > 30)
+            f["total"] = total
+        start = False
         if start:
             owners = f["owners"] = converters(key, REPLICA)
             f["filling"] = len(owners)
@@ -5534,7 +6153,7 @@ def film_heard(key, token, head, variant=None, when=None):
         log(f"hls {key}: its player jumped to piece {head} (from {old})")
         drop_far(key, head, span)
         track = f.get("audio")
-        if track and track[1] == (f.get("variant") == "orig"):
+        if track and bool(track[1]) == (f.get("variant") in ("orig", "remux")):
             for m in (head, head + 1):
                 if m < total:
                     threading.Thread(target=quietly, args=(audio_piece, key, m, *track), daemon=True).start()
@@ -6004,6 +6623,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError, TimeoutError):
+            pass
+
     def send(self, code, body, ctype="application/json", extra=None):
         data = body if isinstance(body, bytes) else (json.dumps(body) if ctype == "application/json" else body).encode()
         self.send_response(code)
@@ -6036,10 +6661,74 @@ class Handler(BaseHTTPRequestHandler):
         self.send(405, {"error": "GET only"})
 
     def do_POST(self):
-        p = urllib.parse.urlparse(self.path).path
+        parsed = urllib.parse.urlparse(self.path)
+        p = parsed.path
+        match = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/session", p)
+        if match:
+            return self.playback_control(match.group(1), urllib.parse.parse_qs(parsed.query))
         if p in ("/kv-sync", "/kv-keeper"):
             return self.kv_peer(p, {})
         self.send(405, {"error": "GET only"})
+
+    def playback_control(self, token, query):
+        opened = open_token(token)
+        if not opened:
+            return self.send(404, {"error": "unknown stream"})
+        key, _ = opened
+        sid = (query.get("sid") or [""])[0]
+        action = (query.get("action") or ["keep"])[0]
+        try:
+            if action == "stop":
+                playback_release(key, sid)
+            else:
+                s = playback_touch(key, sid)
+                if (query.get("managed") or [""])[0] == "1":
+                    s["managed"] = True
+                if action in ("seek", "keep") and query.get("at") and key in probed:
+                    seq = int((query.get("seq") or ["0"])[0])
+                    at = float((query.get("at") or ["0"])[0])
+                    playback_position_report(key, token, s, at, seq, seek=action == "seek")
+        except Dropped:
+            return self.send(410, {"error": "playback ended"}, extra={"Cache-Control": "no-store"})
+        except (ValueError, TypeError):
+            return self.send(400, {"error": "invalid playback control"})
+        reader = src_meta[key].get("reader")
+        if reader and reader != REPLICA and not self.headers.get("X-Tor-Key"):
+            try:
+                st, _, body = conns.request("POST", f"{url_of(reader)}/hls/{token}/session?" + urllib.parse.urlencode(query, doseq=True),
+                                            headers={"X-Tor-Key": CHUNK_KEY}, timeout=3)
+                if st == 200:
+                    return self.send(st, body, extra={"Cache-Control": "no-store"})
+            except Exception:
+                pass
+        s = playback_sessions.get(sid, {})
+        info = probed.get(key)
+        fallback = None
+        if info and (query.get("mode") or [""])[0] == "as-is":
+            mode = playback_mode(info, "as-is", hevc=(query.get("cap") or [""])[0] == "hevc")
+            if mode != "as-is":
+                fallback = "index.m3u8"
+        failed = src_meta[key].get("lookup_err") and not src_meta[key].get("url")
+        return self.send(200, {"mode": s.get("mode"), "fallback": fallback,
+                               "error": "This source is unavailable. Choose another stream." if failed else None},
+                         extra={"Cache-Control": "no-store"})
+
+    def playback_guard(self, key, query):
+        if key in getattr(playback_local, "epochs", {}) and playback_local.epochs[key] != playback_epochs[key]:
+            raise Dropped("superseded request")
+        sid = (query.get("sid") or [""])[0]
+        if sid:
+            s = playback_touch(key, sid)
+            if (query.get("managed") or [""])[0] == "1":
+                s["managed"] = True
+            return s
+        if hmac.compare_digest(self.headers.get("X-Tor-Key") or "", CHUNK_KEY):
+            work_check(key)
+            return None
+        with playback_lock:
+            src_meta[key]["legacy_seen"] = time.time()
+            playback_stopped.discard(key)
+        return None
 
     def kv(self, method, p):
 
@@ -6100,7 +6789,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path)
         p = path.path
+        self.early = None
         try:
+            media = re.match(r"/(?:hls|file)/([A-Za-z0-9_-]+)/", p)
+            if media:
+                opened = open_token(media.group(1))
+                if not opened:
+                    return self.send(404, {"error": "unknown stream"})
+                key = opened[0]
+                self.playback_guard(key, urllib.parse.parse_qs(path.query))
+                playback_local.epochs = {key: playback_epochs[key]}
             if p == "/kv" or p.startswith("/kv/"):
                 return self.kv("GET", p)
             if p == "/kv-sync":
@@ -6109,6 +6807,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, PAGE.replace("__BASE__", PUBLIC_URL or self.base()), "text/html; charset=utf-8")
             if p == "/healthz":
                 return self.send(200, {"ok": True, "app": APP, "replica": REPLICA, "code": CODE})
+            if p in ("/health", "/health/"):
+                return self.send(200, HEALTH_PAGE, "text/html; charset=utf-8", extra={"Cache-Control": "no-store"})
+            if p == "/api/health":
+                return self.send(200, health_dashboard(), extra={"Cache-Control": "no-store"})
             if p == "/status":
                 return self.send(200, status())
             if p == "/api/log":
@@ -6140,22 +6842,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self.browser(m.group(1), m.group(2), "as_is" in urllib.parse.parse_qs(path.query))
             if p in ("/browser/facts", "/facts"):
                 return self.facts(urllib.parse.parse_qs(path.query), p == "/facts")
-            m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/(index|cmedia|orig|omedia|[oc]a\d+)\.m3u8", p)
+            m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/(index|cmedia|orig|omedia|[orc]a\d+)\.m3u8", p)
             if m:
                 return self.hls_lists(m.group(1), m.group(2), urllib.parse.parse_qs(path.query))
-            m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/([oc])a(\d+)/(init|\d+)", p)
+            m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/([orc])a(\d+)/(init|\d+)", p)
             if m:
-                return self.hls_audio(m.group(1), m.group(2) == "o", int(m.group(3)), -1 if m.group(4) == "init" else int(m.group(4)),
-                                      urllib.parse.parse_qs(path.query))
+                n, query = -1 if m.group(4) == "init" else int(m.group(4)), urllib.parse.parse_qs(path.query)
+                with playback_request(key, n, query):
+                    return self.hls_audio(m.group(1), "aac" if m.group(2) == "r" else m.group(2) == "o", int(m.group(3)), n, query)
             m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/ca(\d+)/sound", p)
             if m:
                 return self.hls_sound(m.group(1), int(m.group(2)), urllib.parse.parse_qs(path.query))
             m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/s(\d+)", p)
             if m:
-                return self.hls_piece(m.group(1), int(m.group(2)), urllib.parse.parse_qs(path.query))
+                n, query = int(m.group(2)), urllib.parse.parse_qs(path.query)
+                with playback_request(key, n, query):
+                    return self.hls_piece(m.group(1), n, query)
             m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/o(init|\d+)", p)
             if m:
-                return self.hls_piece(m.group(1), -1 if m.group(2) == "init" else int(m.group(2)), urllib.parse.parse_qs(path.query), orig=True)
+                n, query = -1 if m.group(2) == "init" else int(m.group(2)), urllib.parse.parse_qs(path.query)
+                with playback_request(key, n, query):
+                    return self.hls_piece(m.group(1), n, query, orig=True)
             m = re.fullmatch(r"/hls/([A-Za-z0-9_-]+)/at(\d+)", p)
             if m:
                 return self.hls_at(m.group(1), int(m.group(2)), urllib.parse.parse_qs(path.query))
@@ -6183,6 +6890,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, {"error": "not found"})
         except (BrokenPipeError, ConnectionResetError):
             pass
+        except Dropped:
+            if self.early:
+                self.end_piece(None)
+            else:
+                self.send(410, {"error": "playback ended"}, extra={"Cache-Control": "no-store"})
+        finally:
+            playback_local.epochs = {}
+            playback_local.request = None
 
     def streams(self, kind, sid):
 
@@ -6309,24 +7024,26 @@ class Handler(BaseHTTPRequestHandler):
         if not opened:
             return self.send(404, {"error": "unknown stream"})
         key, _ = opened
-        master, orig = which in ("index", "orig"), which[0] == "o"
+        master, orig = which in ("index", "orig"), which[0] in ("o", "r")
+        compatible = which.startswith("ra") or (query.get("fmt") or [""])[0] == "remux"
         own = hmac.compare_digest(self.headers.get("X-Tor-Key") or "", CHUNK_KEY)
         reader = REPLICA if master else int((query.get("r") or [REPLICA])[0])
         if master and not own:
             if key not in probed:
                 lookup_begin(key)
             reader = reader_of(key) or claim_reader(key)
+        src_meta[key]["reader"] = reader
         direct = master and (query.get("d") or [""])[0] == "1"
         if reader != REPLICA:
             try:
-                st, h, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{which}.m3u8?r={reader}" + ("&d=1" if direct else ""),
+                st, h, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{which}.m3u8?r={reader}" + ("&d=1" if direct else "") + playback_query(query),
                                             headers={"X-Tor-Key": CHUNK_KEY}, timeout=60)
             except Exception as err:
                 return self.send(503, {"error": f"the reader, copy {reader}: {err}"}, extra={"Cache-Control": "no-store"})
             return self.send(st if st < 500 else 503, body, h.get("Content-Type") or "application/vnd.apple.mpegurl", extra={"Cache-Control": "no-store"})
         src_meta[key]["reader"] = REPLICA
         facts_urgent(key)
-        for attempt in range(3):
+        for attempt in range(1):
             try:
                 info = probe_source(key)
                 break
@@ -6335,25 +7052,39 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(503, {"error": f"this file can't play: {err}"}, extra={"Cache-Control": "no-store"})
             except Exception as err:
                 log(f"hls {key}: {err.__class__.__name__}: {err}")
-                if attempt == 2:
-                    return self.send(503, {"error": str(err)}, extra={"Cache-Control": "no-store"})
-                time.sleep(2)
-        why = orig_unfit(info) if orig else None
-        if why:
-            return self.send(404, {"error": f"this version can't play as it is: {why}"}, extra={"Cache-Control": "no-store"})
+                return self.send(503, {"error": str(err)}, extra={"Cache-Control": "no-store"})
+        self.playback_guard(key, query)
+        work_check(key)
+        mode = playback_mode(info, "original" if orig else "converted", force=(query.get("force") or [""])[0] == "1") if master else "remux" if compatible else "original" if orig else "converted"
+        if master:
+            orig, compatible = mode != "converted", mode == "remux"
+            sid = (query.get("sid") or [""])[0]
+            if sid:
+                playback_touch(key, sid, mode)
         cuts = info["ocuts"] if orig else info["cuts"]
         if master:
-            film_heard(key, token, 0, "orig" if orig else None)
-            first_pieces(key, info, orig, True)
+            try:
+                start = float((query.get("start") or ["0"])[0])
+                if not math.isfinite(start):
+                    start = 0
+            except ValueError:
+                start = 0
+            with playback_lock:
+                s = playback_sessions.get((query.get("sid") or [""])[0], {})
+                if s.get("managed"):
+                    start = s.setdefault("position", start)
+                head = playback_position(info, start, orig)
+                film_heard(key, token, head, "remux" if compatible else "orig" if orig else "conv")
+            first_pieces(key, info, "aac" if compatible else orig, True, head)
             group = ',AUDIO="a"' if info["audios"] else ""
             at = f"{url_of(REPLICA)}/hls/{token}/" if direct else ""
 
 
             lines = ["#EXTM3U", "#EXT-X-VERSION:7" if orig else "#EXT-X-VERSION:4", "#EXT-X-INDEPENDENT-SEGMENTS"] + \
-                    [x.replace('URI="', 'URI="' + at) for x in audio_renditions(info, orig)]
+                    [x.replace('URI="', 'URI="' + at) for x in audio_renditions(info, "aac" if compatible else orig)]
             if orig:
                 bw = int(info["size"] * 8 / max(1, info["duration"]))
-                lines += [f'#EXT-X-STREAM-INF:BANDWIDTH={int(bw * 1.6)},AVERAGE-BANDWIDTH={bw},CODECS="{orig_codecs(info)}",'
+                lines += [f'#EXT-X-STREAM-INF:BANDWIDTH={int(bw * 1.6)},AVERAGE-BANDWIDTH={bw},CODECS="{orig_codecs(info, compatible)}",'
                           f'RESOLUTION={info["w"]}x{info["h"]},VIDEO-RANGE={info["range"]},FRAME-RATE={info["fps"]:.3f}{group}', f"{at}omedia.m3u8?r={REPLICA}"]
             else:
                 w, h = (1920, info["h"] * 1920 // max(1, info["w"]) // 2 * 2) if info["w"] > 1920 else (info["w"], info["h"])
@@ -6366,13 +7097,19 @@ class Handler(BaseHTTPRequestHandler):
             longest = max(y - x for x, y in zip(cuts, cuts[1:]))
             lines = ["#EXTM3U", "#EXT-X-VERSION:7" if orig else "#EXT-X-VERSION:3", f"#EXT-X-TARGETDURATION:{math.ceil(longest)}",
                      "#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-PLAYLIST-TYPE:VOD", "#EXT-X-INDEPENDENT-SEGMENTS"]
-            if orig:
+            if orig and (a is None or not compatible):
                 lines.append(f'#EXT-X-MAP:URI="{"oinit" if a is None else which + "/init"}?r={REPLICA}"')
             name = {"omedia": "o", "cmedia": "s"}.get(which, which + "/")
             for i in range(len(cuts) - 1):
                 lines += [f"#EXTINF:{cuts[i + 1] - cuts[i]:.3f},", f"{name}{i}?r={REPLICA}"]
             lines.append("#EXT-X-ENDLIST")
-        self.send(200, "\n".join(lines) + "\n", "application/vnd.apple.mpegurl", extra={"Cache-Control": "no-store"})
+        suffix = playback_query(query) + ("&fmt=remux" if compatible else "")
+        if suffix:
+            lines = [re.sub(r'URI="([^"]+)"', lambda m: 'URI="' + m[1] + suffix + '"', line)
+                     if line.startswith("#") else line + suffix for line in lines]
+        if master and start > 0:
+            lines.insert(2, f"#EXT-X-START:TIME-OFFSET={min(start, info['duration'] - .25):.3f},PRECISE=YES")
+        self.send(200, "\n".join(lines) + "\n", "application/vnd.apple.mpegurl", extra={"Cache-Control": "no-store", "X-Playback-Mode": mode})
 
     def begin_piece(self, ctype):
 
@@ -6431,7 +7168,7 @@ class Handler(BaseHTTPRequestHandler):
         except (KeyError, ValueError):
             return self.send(400, {"error": "r"})
         own = hmac.compare_digest(self.headers.get("X-Tor-Key") or "", CHUNK_KEY)
-        pk, ctype = f"{key}:{'o' if orig else 'c'}a{a}", "audio/mp4" if orig else "video/mp2t"
+        pk, ctype = f"{key}:{'r' if orig == 'aac' else 'o' if orig else 'c'}a{a}", "audio/mp4" if orig and orig != "aac" else "video/mp2t"
         data = piece_get(pk, n) if reader == REPLICA else None
         early = data is None and not own and self.command == "GET"
         if early:
@@ -6440,7 +7177,7 @@ class Handler(BaseHTTPRequestHandler):
         if data is None and reader != REPLICA:
             how = "audio from the reader"
             try:
-                st, _, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{'o' if orig else 'c'}a{a}/{'init' if n < 0 else n}?r={reader}",
+                st, _, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{'r' if orig == 'aac' else 'o' if orig else 'c'}a{a}/{'init' if n < 0 else n}?r={reader}" + playback_query(query),
                                             headers={"X-Tor-Key": CHUNK_KEY}, timeout=120)
                 if st == 200 and body:
                     data = body
@@ -6548,12 +7285,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(502, {"error": str(err)})
             return self.send(200, data, "video/mp2t") if prep == "get" else self.send(200, {"ok": True})
         heard = time.time() if not own else when_asked(query)
-        if not own and n >= 0 and not (reader == REPLICA and key in films):
-            threading.Thread(target=quietly, args=(tell_reader, token, key, n, reader, "orig" if orig else "conv", heard), daemon=True).start()
+        s = playback_sessions.get((query.get("sid") or [""])[0], {})
+        if s.get("managed"):
+            # A native player can request old video or download far ahead. Its
+            # explicit seek/progress controls own the preparation window.
+            heard = 0
+            if key in films:
+                films[key]["seen"] = time.time()
+        if heard and not own and n >= 0 and not (reader == REPLICA and key in films):
+            threading.Thread(target=quietly, args=(tell_reader, token, key, n, reader, "remux" if (query.get("fmt") or [""])[0] == "remux" else "orig" if orig else "conv", heard), daemon=True).start()
         elif n >= 0 and reader == REPLICA and heard:
 
             try:
-                film_heard(key, token, n, "orig" if orig else "conv", heard)
+                film_heard(key, token, n, "remux" if (query.get("fmt") or [""])[0] == "remux" else "orig" if orig else "conv", heard)
             except Exception as err:
                 log(f"hls {key}: {err}")
         data = piece_get(key + ORIG if orig else key, n)
@@ -6565,7 +7309,7 @@ class Handler(BaseHTTPRequestHandler):
             how = "reader"
             try:
                 piece = ("oinit" if n < 0 else f"o{n}") if orig else f"s{n}"
-                st, _, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{piece}?r={reader}&t={heard:.3f}", headers={"X-Tor-Key": CHUNK_KEY}, timeout=120)
+                st, _, body = conns.request("GET", f"{url_of(reader)}/hls/{token}/{piece}?r={reader}&t={heard:.3f}" + playback_query(query), headers={"X-Tor-Key": CHUNK_KEY}, timeout=120)
                 data, err = (body, None) if st == 200 and body else (None, f"the reader, copy {reader}: HTTP {st}")
             except Exception as e:
                 err = f"the reader, copy {reader}: {e.__class__.__name__}: {e}"
@@ -6575,7 +7319,7 @@ class Handler(BaseHTTPRequestHandler):
                 if n >= len(info["cuts"]) - 1:
                     raise RuntimeError("past the film's end")
                 if key not in films:
-                    film_heard(key, token, max(0, n), "orig" if orig else None)
+                    film_heard(key, token, max(0, n), "remux" if (query.get("fmt") or [""])[0] == "remux" else "orig" if orig else "conv")
                 if orig:
                     data, how = patiently(key, max(0, n), lambda: orig_piece(key, n) if n >= 0 else
                                           init_piece(key, key + ORIG, lambda m: orig_piece(key, m))), "here"
@@ -6692,77 +7436,95 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, data, "application/octet-stream")
 
     def file(self, token, name, attach):
-
-
-
-
-
-
         opened = open_token(token)
         if not opened:
             return self.send(404, {"error": "unknown stream"})
         key, _ = opened
+        if attach:
+            self.playback_guard(key, {})
         fname = re.sub(r"_([A-Za-z0-9]{1,5})\Z", r".\1", urllib.parse.unquote(name))
-        rng = re.match(r"bytes=(\d+)-(\d*)", self.headers.get("Range") or "")
-        conn = r = None
-        for attempt in (0, 1):
-            try:
+        sid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("sid") or [""])[0]
+        if sid and not attach:
+            playback_touch(key, sid, "as-is")
+        call = {"key": key, "n": None, "bg": False, "conn": None, "sid": sid}
+        sent, conn = False, None
+        with hls_lock:
+            runs[id(call)] = call
+        try:
+            for attempt in (0, 1):
+                work_check(key)
                 m = src_lookup(key, again=bool(attempt))
                 size = m["size"]
-                start = int(rng.group(1)) if rng else 0
-                end = min(int(rng.group(2)), size - 1) if rng and rng.group(2) else size - 1
-                if start >= size:
+                requested = self.headers.get("Range")
+                rng = re.fullmatch(r"bytes=(\d*)-(\d*)", requested or "")
+                if requested and (not rng or not any(rng.groups())):
                     return self.send(416, b"", "text/plain", {"Content-Range": f"bytes */{size}"})
-                if self.command == "HEAD" or not attach:
+                if rng and not rng[1]:
+                    start, end = max(0, size - int(rng[2])), size - 1
+                else:
+                    start = int(rng[1]) if rng else 0
+                    end = min(int(rng[2]), size - 1) if rng and rng[2] else size - 1
+                if start >= size or end < start:
+                    return self.send(416, b"", "text/plain", {"Content-Range": f"bytes */{size}"})
+                if self.command == "HEAD":
                     break
                 u = urllib.parse.urlsplit(m["url"])
-                conn = (http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection)(u.netloc, timeout=60)
-                conn.request("GET", (u.path or "/") + (f"?{u.query}" if u.query else ""), headers={"Range": f"bytes={start}-{end}", "User-Agent": "Mozilla/5.0"})
+                conn = (http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection)(u.netloc, timeout=15)
+                call["conn"] = conn
+                conn.connect()
+                work_check(key)
+                if call.get("ended"):
+                    raise Dropped("file stream ended")
+                conn.request("GET", (u.path or "/") + (f"?{u.query}" if u.query else ""),
+                             headers={"Range": f"bytes={start}-{end}", "User-Agent": "Mozilla/5.0"})
                 r = conn.getresponse()
                 if r.status == 206:
                     break
                 conn.close()
-                raise RuntimeError(f"the source answered HTTP {r.status}")
-            except Exception as err:
                 if attempt:
-                    return self.send(503, {"error": str(err)}, extra={"Cache-Control": "no-store"})
-        self.send_response(206 if rng else 200)
-        self.send_header("Content-Type", FILE_TYPES.get(fname.rsplit(".", 1)[-1].lower()) or mimetypes.guess_type(fname)[0] or "application/octet-stream")
-        self.send_header("Content-Length", str(end - start + 1))
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        if rng:
-            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        if attach:
-            plain = fname.encode("ascii", "replace").decode().replace('"', "")
-            self.send_header("Content-Disposition", f"attachment; filename=\"{plain}\"; filename*=UTF-8''{urllib.parse.quote(fname)}")
-        self.end_headers()
-        if self.command == "HEAD":
-            return
-        if not attach:
-            pos = start
-            while pos <= end:
-                b = pos // SRC_BLOCK
-                for nb in range(b + 1, b + 3):
-                    if nb * SRC_BLOCK <= size - 1 and wanted_block(key, nb):
-                        threading.Thread(target=quietly, args=(src_block, key, nb, True, None), daemon=True).start()
-                piece = src_block(key, b, True, None)[pos - b * SRC_BLOCK:end + 1 - b * SRC_BLOCK]
-                if not piece:
-                    break
-                self.wfile.write(piece)
-                pos += len(piece)
-            return
-        try:
+                    return self.send(503, {"error": "This source is unavailable. Choose another stream."}, extra={"Cache-Control": "no-store"})
+            work_check(key)
+            self.send_response(206 if rng else 200)
+            self.send_header("Content-Type", FILE_TYPES.get(fname.rsplit(".", 1)[-1].lower()) or mimetypes.guess_type(fname)[0] or "application/octet-stream")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            if rng:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            if attach:
+                plain = fname.encode("ascii", "replace").decode().replace('"', "")
+                self.send_header("Content-Disposition", f"attachment; filename=\"{plain}\"; filename*=UTF-8''{urllib.parse.quote(fname)}")
+            self.end_headers()
+            sent = True
+            if self.command == "HEAD":
+                return
+            # Forward bytes as they arrive. No 8 MB block or speculative reads
+            # stand between a direct-file request and its first playable bytes.
             left = end - start + 1
-            while left > 0:
-                chunk = r.read(min(1 << 18, left))
-                if not chunk:
+            while left:
+                if attach:
+                    src_meta[key]["legacy_seen"] = time.time()
+                elif sid:
+                    playback_touch(key, sid)
+                work_check(key)
+                data = r.read(min(64 * 1024, left))
+                if not data:
+                    self.close_connection = True
                     break
-                self.wfile.write(chunk)
-                left -= len(chunk)
+                self.wfile.write(data)
+                left -= len(data)
+        except (Dropped, OSError, http.client.HTTPException, RuntimeError) as err:
+            self.close_connection = True
+            if not sent:
+                if isinstance(err, Dropped):
+                    raise
+                return self.send(503, {"error": "This source is unavailable. Choose another stream."}, extra={"Cache-Control": "no-store"})
         finally:
-            conn.close()
+            if conn:
+                conn.close()
+            with hls_lock:
+                runs.pop(id(call), None)
 
     def src(self, key, query):
 
@@ -6949,6 +7711,245 @@ class Handler(BaseHTTPRequestHandler):
                     f"(first byte {first_byte or 0:.2f}s)")
 
 
+HEALTH_PAGE = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0d18">
+<title>Frame health</title>
+<style>:root{color-scheme:dark;--bg:#0c0d18;--surface:#131522;--raised:#191c2d;--line:#292c41;--text:#f0f1fc;--muted:#a2a8c1;--accent:#a99aff;--blue:#7aabff;--green:#74dcb2;--amber:#f1c37b;--red:#ff929f;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% -180px,#29204780,transparent 700px),var(--bg);color:var(--text)}a{color:inherit;text-decoration:none}button,input,select{font:inherit}button,select{cursor:pointer}button,a,input,select{outline-offset:4px}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent)}button{border:1px solid var(--line);border-radius:10px;background:var(--raised);color:var(--text);padding:10px 15px;min-height:42px}button:hover{background:#262941}button:disabled{opacity:.6;cursor:wait}.primary{background:#8271e7;border-color:#9685fc;color:#fff}.primary:hover{background:#9481f6}.muted{color:var(--muted)}.sr-only,.skip:not(:focus){position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.skip:focus{position:fixed;left:16px;top:12px;background:var(--raised);padding:12px;z-index:5}.topbar{height:76px;padding:0 max(24px,calc((100vw - 1280px)/2));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#0c0d1880}.brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:650}.mark{display:grid;place-items:center;background:linear-gradient(135deg,#ad83fa,#637bf4);border-radius:9px;width:30px;height:30px;font-size:15px;padding-left:2px}.divider{color:#555a77;margin:0 6px}.back{font-size:13px;color:var(--muted)}.back:hover,.text-link:hover{color:#ddd5ff}main{max-width:1328px;margin:auto;padding:40px 24px 24px}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:24px}.eyebrow{font-size:10px;letter-spacing:.15em;color:var(--accent);font-weight:700;margin:0 0 8px}h1{font-size:38px;letter-spacing:-.045em;line-height:1.2;margin:0;font-weight:650}.title-dot{display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:50%;margin:0 0 4px 12px}.subtitle{color:var(--muted);margin:10px 0 0}.controls{display:flex;gap:8px;flex:none}.update-line{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:12px;margin:26px 0 14px}#freshness::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--muted);margin-right:7px}#freshness.live::before{background:var(--green)}#freshness.stale::before{background:var(--amber)}.notice{border:1px solid #645139;border-radius:12px;background:#34291e70;color:#f6d7a7;padding:12px 16px;margin-bottom:16px}.notice a{text-decoration:underline}.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.summary-tile{padding:20px 22px;background:linear-gradient(145deg,#1b1c32,var(--surface));border:1px solid var(--line);border-radius:14px}.summary-tile>span{display:block;color:#c5c7db;font-size:12px}.summary-tile strong{display:block;font-size:32px;line-height:1.2;margin:9px 0 6px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.035em}.summary-tile strong em{font-style:normal;color:#777e9c;font-size:21px;margin-left:5px}.summary-tile small{color:var(--muted);font-size:11px}.section{margin-top:34px}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}h2{font-size:19px;font-weight:600;letter-spacing:-.02em;margin:0}.section-heading p{color:var(--muted);font-size:12px;margin:3px 0 0}.count{font-size:12px;color:var(--muted);font-weight:500;background:#222437;border:1px solid var(--line);border-radius:6px;padding:2px 6px;margin-left:7px;vertical-align:2px}.tag{font-size:11px;border:1px solid #3b335b;border-radius:7px;color:#b8aaf2;padding:4px 9px;white-space:nowrap}.mac-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.mac-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}.mac-card.offline{border-color:#61404f}.mac-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.machine-button{padding:0;border:0;background:none;font-weight:600;font-size:15px;min-height:32px;text-align:left}.machine-button:hover{background:none;color:var(--accent)}.badge{font-size:11px;color:var(--green);display:inline-flex;gap:5px;align-items:center;white-space:nowrap}.badge::before{content:"";background:currentColor;border-radius:50%;width:5px;height:5px}.badge.offline{color:var(--red)}.badge.stale,.badge.attention,.badge.draining,.badge.starting{color:var(--amber)}.badge.loading{color:var(--muted)}.badge.busy{color:var(--blue)}.jobs{font-variant-numeric:tabular-nums;margin:14px 0 10px;display:flex;align-items:baseline;gap:8px}.jobs strong{font-size:29px;font-weight:600}.jobs span{color:var(--muted);font-size:12px}.capacity{display:flex;gap:4px;margin-bottom:14px}.capacity i{height:4px;flex:1;background:#2a2d43;border-radius:2px}.capacity i.used{background:var(--accent)}.mac-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-variant-numeric:tabular-nums}.mac-metrics span,.detail-grid dt{color:var(--muted);font-size:11px;display:block}.mac-metrics b{font-size:14px;font-weight:550}.mac-foot{display:flex;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:14px;padding-top:11px;color:var(--muted);font-size:11px}.mac-foot b{font-weight:550;color:var(--text)}.last-seen{font-size:11px;color:var(--muted);margin:8px 0 0}.footnote{font-size:11px;color:var(--muted);margin:10px 0 0}.text-link{font-size:12px;color:var(--accent);white-space:nowrap}.trends{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}.trend-panel{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px}.trend-title{display:flex;align-items:center;justify-content:space-between;gap:16px}.trend-title h3{margin:0;font-size:13px;font-weight:550}.trend-title>span{color:var(--accent);font-variant-numeric:tabular-nums;font-weight:600}.trend-panel:nth-child(2) .trend-title>span{color:var(--blue)}.chart{display:block;width:100%;height:96px;margin:8px 0}.chart-caption{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;gap:10px}.chart-empty{height:112px;display:grid;place-items:center;font-size:12px;color:var(--muted)}.filters{display:flex;align-items:center;gap:10px;margin-bottom:12px}.search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:0 12px;width:min(360px,100%);height:42px;color:var(--muted)}input{background:none;border:0;color:var(--text);min-width:0;width:100%;font-size:12px;padding:10px 0}input::placeholder{color:var(--muted)}select{color:var(--text);background:var(--surface);border:1px solid var(--line);padding:10px 30px 10px 12px;border-radius:9px;min-height:42px;font-size:12px}#table-count{margin-left:auto;font-size:11px}.table-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}table{border-collapse:collapse;width:100%;text-align:left;font-variant-numeric:tabular-nums}th{font-size:10px;color:var(--muted);font-weight:550;letter-spacing:.02em;background:#171a29;padding:12px 16px;white-space:nowrap}td{padding:14px 16px;border-top:1px solid var(--line);font-size:12px}td .machine-button{font-size:13px}td .sub{color:var(--muted);font-size:10px;display:block}.meter{height:3px;background:#2b2d43;border-radius:3px;width:70px;margin-top:5px;overflow:hidden}.meter i{display:block;height:100%;background:var(--accent)}.meter.blue i{background:var(--blue)}.meter.warn i{background:var(--amber)}.stale-reading{color:var(--muted)}.frame-marker{color:var(--accent);font-size:9px;margin-left:6px}.empty{padding:30px;text-align:center;color:var(--muted)}footer{border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;margin-top:32px;padding-top:18px;color:var(--muted);font-size:10px}dialog{width:min(600px,calc(100% - 28px));max-height:85svh;background:var(--surface);color:var(--text);border:1px solid #43405e;border-radius:18px;padding:24px;box-shadow:0 24px 100px #0008}dialog::backdrop{background:#050611b3;backdrop-filter:blur(4px)}.dialog-top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}.icon-button{padding:6px 12px;font-size:16px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}.detail-grid dd{margin:3px 0 0;font-size:15px;font-variant-numeric:tabular-nums}.detail-meta{font-size:12px;color:var(--muted)}.detail-chart{margin:16px 0;padding:12px;background:var(--bg);border-radius:10px}.detail-chart h3{font-size:12px;margin:0;font-weight:500}.detail-link{display:inline-block;color:var(--accent);padding:10px 0}.error-text{color:var(--amber)}
+.stream-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stream-tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}.stream-tile>span{font-size:11px;color:var(--muted)}.stream-tile strong{display:block;font-size:21px;font-weight:600;margin:5px 0;font-variant-numeric:tabular-nums}.stream-tile small{display:block;color:var(--muted);font-size:10px}.resource-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 12px;border-block:1px solid var(--line);margin-top:14px;padding:16px 0}.resource-grid>div{min-width:0}.resource-grid>div>span{display:block;color:var(--muted);font-size:10px}.resource-value{font-size:23px;font-weight:550;font-variant-numeric:tabular-nums;line-height:1.3;margin-top:4px}.resource-grid .meter{width:100%;margin:7px 0}.resource-grid small{display:block;font-size:10px;color:var(--muted);margin-top:5px}.resource-grid .network-value{display:block;font-size:13px;line-height:1.7;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}.telemetry-note{font-size:10px;color:var(--muted);margin:9px 0 0}.telemetry-note.error-text{color:var(--amber)}.jobs strong{font-size:21px}.replica-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px}.replica-card{padding:18px 20px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#20203c,var(--surface) 70%)}.replica-card h3{font-size:15px;font-weight:600;margin:0}.workload-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:16px 0 0}.workload-grid dt{font-size:10px;color:var(--muted)}.workload-grid dd{font-size:14px;margin:4px 0 0;font-variant-numeric:tabular-nums}.workload-grid>div{min-width:0}.replica-label{color:var(--accent)!important}.detail-grid dd{overflow-wrap:anywhere}
+@media(max-width:1000px){th,td{padding-inline:10px}.topbar{padding-inline:24px}.mac-card{padding:14px}.summary-tile{padding:18px}.summary-tile strong{font-size:28px}.meter{width:55px}.stream-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){main{padding:28px 16px 20px}.topbar{height:64px;padding:0 16px}.back{font-size:11px}.brand{font-size:15px}.page-heading{align-items:flex-start;flex-direction:column;gap:18px}h1{font-size:33px}.subtitle{font-size:12px}.controls{width:100%;justify-content:flex-end}.summary-grid{grid-template-columns:1fr 1fr;gap:9px}.summary-tile{padding:16px}.mac-grid{grid-template-columns:1fr}.mac-card{padding:16px}.mac-metrics{grid-template-columns:repeat(4,1fr)}.mac-foot{margin-top:12px}.jobs{margin:8px 0}.mac-head .machine-button{font-size:16px}.capacity{margin-bottom:12px}.trends{grid-template-columns:1fr}.trend-panel{padding:16px}.section{margin-top:28px}.section-heading{align-items:flex-start}h2{font-size:18px}.section-heading p{font-size:11px}.update-line{font-size:10px}.filters{flex-wrap:wrap}.search{width:100%}#table-count{flex:1;text-align:right}.table-wrap{border:0;background:none;overflow:visible}table,tbody{display:block}thead{display:none}tr{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;margin-bottom:9px;background:var(--surface);padding:12px;gap:12px}td{display:block;padding:0;border:0}td:first-child{grid-column:span 2}td:nth-child(2){justify-self:end;align-self:center}td:nth-child(n+3)::before{content:attr(data-label);display:block;font-size:10px;color:var(--muted);margin-bottom:3px}td:nth-child(6){grid-column:span 2}td:last-child{font-size:11px}.meter{width:70px}td.empty{grid-column:1/-1;padding:16px}.mac-metrics span{font-size:10px}.mac-metrics b{font-size:13px}.chart-caption{font-size:9px}footer{flex-direction:column;gap:6px}.text-link{font-size:11px}}
+@media(max-width:380px){.mac-metrics{grid-template-columns:1fr 1fr}.summary-tile strong{font-size:26px}.section-heading .tag{display:none}.back{max-width:90px;text-align:right}.brand{gap:7px}.divider{margin:0 2px}}
+@media(min-width:540px) and (max-width:760px){.resource-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:760px){.stream-grid{gap:9px}.stream-tile{padding:14px}.stream-tile strong{font-size:19px}.resource-grid{gap:14px 22px}.resource-value{font-size:25px}.replica-card{padding:16px}.workload-grid dd{font-size:13px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.chart-controls{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 16px;flex-wrap:wrap}.metric-tabs,.range-tabs{display:flex;gap:4px;flex-wrap:wrap}.chart-controls button{padding:7px 11px;min-height:36px;font-size:11px;border-color:transparent;background:var(--surface);color:var(--muted);border-radius:8px}.chart-controls button[aria-pressed=true]{color:#e6dfff;background:#332d55;border-color:#51466f}.range-tabs button{font-size:10px}.mac-chart{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}.metric-chart+.metric-chart{margin-top:20px}.metric-chart h3{font-size:12px;font-weight:550;margin:0 0 8px;color:#c5c7db}.series-chart{display:block;width:100%;height:130px;overflow:visible}.series-scale{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-bottom:5px}.series-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin-top:10px;font-size:10px;font-variant-numeric:tabular-nums}.series-legend span{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap}.series-legend i{width:6px;height:6px;flex:none;border-radius:50%}.series-legend b{font-weight:500;margin-left:auto;color:var(--muted)}.detail-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px;padding:18px;background:var(--bg);border:1px solid var(--line);border-radius:12px}.detail-charts .metric-chart+.metric-chart{margin-top:0}.detail-charts>.footnote{grid-column:1/-1}.detail-charts .series-chart{height:170px}dialog{width:min(850px,calc(100% - 28px))}.detail-grid{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:760px){.chart-controls{gap:9px}.chart-controls button{min-height:40px;padding:7px 10px}.series-chart{height:130px}dialog{padding:18px}.detail-grid{grid-template-columns:1fr 1fr}.detail-charts{padding:14px}.mac-card .series-legend{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(min-width:540px) and (max-width:760px){.resource-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to health metrics</a>
+<header class="topbar"><a class="brand" href="/watch"><span class="mark" aria-hidden="true">▶</span>Frame<span class="divider">/</span><span class="muted">Health</span></a><a class="back" href="/watch">Back to watching <span aria-hidden="true">↗</span></a></header>
+<main id="main">
+  <div class="page-heading"><div><p class="eyebrow">YOUR STREAMING INFRASTRUCTURE</p><h1>Frame health<span class="title-dot" aria-hidden="true"></span></h1><p class="subtitle">Your Mac workers and the machines running Frame replicas.</p></div><div class="controls"><button id="pause" type="button" aria-pressed="false">Pause updates</button><button id="refresh" type="button" class="primary">Refresh <span aria-hidden="true">↻</span></button></div></div>
+  <div class="update-line"><span id="freshness" role="status">Connecting to your machines…</span><span>Automatic updates · 15 sec</span></div>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <section class="summary-grid" id="summary" aria-label="Frame summary"><div class="summary-tile"><span>Machines online</span><strong>—</strong><small>Waiting for health checks</small></div><div class="summary-tile"><span>Active streams</span><strong>—</strong><small>Playback service</small></div><div class="summary-tile"><span>Mac conversion jobs</span><strong>—</strong><small>Across reachable workers</small></div><div class="summary-tile"><span>Queued work</span><strong>—</strong><small>Source reads and uploads</small></div></section>
+  <section class="section" aria-labelledby="stream-title"><div class="section-heading"><div><h2 id="stream-title">Streaming</h2><p id="stream-scope">Live playback workload</p></div><span class="tag">Last 5 minutes</span></div><div class="stream-grid" id="streaming"></div></section>
+  <section class="section" aria-labelledby="mac-title"><div class="section-heading"><div><h2 id="mac-title">Mac minis <span class="count" id="mac-count">—</span></h2><p>CPU, GPU, memory, and conversion capacity</p></div><span class="tag">VideoToolbox</span></div><div id="mac-chart-controls"></div><div class="mac-grid" id="macs"><div class="empty">Checking the Mac workers…</div></div><p class="footnote">Resource samples every 5 sec. Mac charts build up to an hour of history while the dashboard is viewed. Open a Mac for more detail.</p></section>
+  <section class="section" aria-labelledby="replica-title"><div class="section-heading"><div><h2 id="replica-title">Frame replicas <span class="count" id="replica-count">—</span></h2><p>Resources used by each Frame workload</p></div></div><div class="replica-grid" id="replicas"></div></section>
+  <section class="section" aria-labelledby="fleet-title"><div class="section-heading"><div><h2 id="fleet-title">Frame replica hosts <span class="count" id="fleet-count">—</span></h2><p>Whole-machine resources on Frame’s current hosts</p></div><a id="runners-link" class="text-link" href="https://runners.billybishop4-workers.xyz/#/apps/frame" target="_blank" rel="noopener noreferrer">Open Runners ↗</a></div>
+    <div class="trends"><div class="trend-panel"><div class="trend-title"><h3>Host CPU</h3><span id="cpu-value">—</span></div><div id="cpu-chart" class="chart-slot"></div><div class="chart-caption"><span>Average across Frame hosts</span><span>Last hour</span></div></div><div class="trend-panel"><div class="trend-title"><h3>Host memory</h3><span id="memory-value">—</span></div><div id="memory-chart" class="chart-slot"></div><div class="chart-caption"><span>Used memory / total memory</span><span>Last hour</span></div></div></div>
+    <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a host, region, or pool" aria-label="Find a Frame host"></label><label class="select-label"><span class="sr-only">Host health filter</span><select id="filter"><option value="all">All Frame hosts</option><option value="attention">Needs attention</option></select></label><span id="table-count" class="muted"></span></div>
+    <div class="table-wrap"><table><thead><tr><th scope="col">Machine</th><th scope="col">Health</th><th scope="col">CPU</th><th scope="col">Memory</th><th scope="col">Disk used</th><th scope="col">Network ↓ / ↑</th><th scope="col">Sample</th></tr></thead><tbody id="machines"><tr><td colspan="7" class="empty">Loading machine metrics…</td></tr></tbody></table></div>
+  </section>
+  <footer><span id="service-detail">Read-only health monitoring</span><span>Missing readings appear as —, never as zero.</span></footer>
+</main>
+<dialog id="detail"><div class="dialog-top"><div><p class="eyebrow" id="detail-kind">MACHINE HEALTH</p><h2 id="detail-title"></h2></div><button id="close-detail" class="icon-button" aria-label="Close machine details">✕</button></div><div id="detail-body"></div></dialog>
+<script>(() => {
+  'use strict';
+  const number = n => typeof n === 'number' && Number.isFinite(n);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const value = (n, digits=0) => number(n) ? n.toLocaleString(undefined, {maximumFractionDigits:digits}) : '—';
+  const pct = n => number(n) ? value(n, 1) + '%' : '—';
+  const bytes = n => !number(n) ? '—' : n >= 2**30 ? value(n/2**30, 1)+' GB' : n >= 2**20 ? value(n/2**20, 1)+' MB' : n >= 1024 ? value(n/1024, 1)+' KB' : value(n)+' B';
+  const rate = n => number(n) ? bytes(n)+'/s' : '—';
+  const ms = n => number(n) ? n>=1000 ? value(n/1000,2)+' sec' : value(n)+' ms' : '—';
+  const cores = n => number(n) ? value(n,2)+' cores' : '—';
+  const age = (stamp, now=Date.now()/1000) => !number(stamp) ? 'Not reported' : now-stamp < 3 ? 'Just now' : now-stamp < 60 ? value(Math.max(0,now-stamp))+' sec ago' : now-stamp < 3600 ? value((now-stamp)/60)+' min ago' : value((now-stamp)/3600,1)+' hr ago';
+  const labels = {healthy:'Healthy',busy:'Converting',offline:'Offline',stale:'Stale data',attention:'Needs attention',draining:'Draining',starting:'Starting',loading:'Checking'};
+  const badge = state => `<span class="badge ${Object.hasOwn(labels,state) ? state : 'loading'}">${esc(labels[state] || 'Unknown')}</span>`;
+  const sum = list => list.filter(number).reduce((a,b)=>a+b,0);
+  const available = list => list.some(number) ? sum(list) : null;
+  const average = list => { const ns=list.filter(number); return ns.length ? sum(ns)/ns.length : null; };
+  const attention = n => ['offline','stale','attention'].includes(n.state);
+  const meter = (n, blue=false) => `<span>${pct(n)}</span>${number(n) ? `<div class="meter${blue ? ' blue':''}${n>=90?' warn':''}"><i style="width:${Math.max(0,Math.min(100,n))}%"></i></div>`:''}`;
+  function chart(rows, index, label, color='var(--accent)', max=100) {
+    if (!rows.some(row=>number(row[index]))) return '<div class="chart-empty">Waiting for trend history</div>';
+    const points = rows.filter(row=>number(row[0])), first=points[0]?.[0], span=Math.max(1,(points.at(-1)?.[0] || first)-first);
+    let path='', connected=false;
+    for (const row of points) {
+      if (!number(row[index])) { connected=false; continue; }
+      const x=4+(row[0]-first)/span*592, y=90-Math.min(max,Math.max(0,row[index]))/Math.max(1,max)*80;
+      path+=(connected?'L':'M')+x.toFixed(1)+','+y.toFixed(1)+' '; connected=true;
+    }
+    return `<svg class="chart" viewBox="0 0 600 100" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><path d="M0 10H600 M0 50H600 M0 90H600" fill="none" stroke="var(--line)" stroke-dasharray="3 5"/><path d="${path}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+  function fleetTrends(nodes) {
+    const samples=new Map();
+    nodes.forEach(node=>(node.history || []).forEach(row=>{ if(!samples.has(row[0])) samples.set(row[0],[]); samples.get(row[0]).push(row); }));
+    return [...samples].sort((a,b)=>a[0]-b[0]).map(([t,rows])=>{const paired=rows.filter(r=>number(r[5])&&number(r[6])&&r[6]>0), total=sum(paired.map(r=>r[6]));return [t,average(rows.map(r=>r[1])),total?sum(paired.map(r=>r[5]))/total*100:null];});
+  }
+  const colors=['#a99aff','#7aabff','#74dcb2','#f1c37b','#ff929f','#71d8e4','#e997ed','#badb7e'];
+  const metrics={cpu:'CPU',gpu:'GPU',memory:'RAM',disk:'Disk',network:'Network',work:'Conversion'};
+  function seriesChart(rows, specs, label, {max=null,format=pct,gap=45}={}) {
+    rows=rows.filter(r=>number(r[0])).sort((a,b)=>a[0]-b[0]);
+    const all=rows.flatMap(r=>specs.map(s=>s.get(r))).filter(number);
+    if(!all.length) return '<div class="chart-empty">Collecting '+esc(label.toLowerCase())+' history…</div>';
+    const ceiling=Math.max(1,max??Math.max(...all)*1.1), first=rows[0][0], last=rows.at(-1)[0], span=Math.max(1,last-first);
+    const lines=specs.map((s,i)=>{
+      let path='',previous=null,point=null;
+      rows.forEach(r=>{const v=s.get(r);if(!number(v)){previous=null;return;}const x=6+(r[0]-first)/span*588,y=91-Math.min(ceiling,Math.max(0,v))/ceiling*82;
+        path+=(previous!==null && r[0]-previous<=gap?'L':'M')+x.toFixed(1)+','+y.toFixed(1)+' ';previous=r[0];point=[x,y];});
+      const color=s.color||colors[i%colors.length];
+      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>${point?`<circle cx="${point[0].toFixed(1)}" cy="${point[1].toFixed(1)}" r="2.2" fill="${color}"/>`:''}`;
+    }).join('');
+    const stamp=t=>new Date(t*1000).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+    return `<div class="series-scale"><span>${esc(format(ceiling))}</span><span>${rows.length} samples</span></div><svg class="series-chart" viewBox="0 0 600 100" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><path d="M0 9H600 M0 50H600 M0 91H600" fill="none" stroke="var(--line)" stroke-dasharray="3 5"/>${lines}</svg><div class="chart-caption"><span>${esc(stamp(first))}</span><span>${esc(stamp(last))}</span></div><div class="series-legend">${specs.map((s,i)=>`<span><i style="background:${s.color||colors[i%colors.length]}"></i>${esc(s.name)}<b>${esc(format(s.get(rows.at(-1))))}</b></span>`).join('')}</div>`;
+  }
+  function metricCharts(m, kind, metric, range, now) {
+    const mac=kind==='mac', rows=(m.history||[]).filter(r=>r[0]>=now-range), observed=(m.observed_history||[]).filter(r=>r[0]>=now-range);
+    const series=(name,index,color)=>({name,get:r=>r[index],color}), options={gap:mac?45:120};
+    const block=(title,data,specs,extra={})=>`<div class="metric-chart"><h3>${esc(title)}</h3>${seriesChart(data,specs,title,{...options,...extra})}</div>`;
+    if(metric==='cpu') {
+      const specs=[series('Total',mac?4:1)];
+      if(mac) for(let i=0;i<Math.max(m.cpu_per_core?.length||0,...rows.map(r=>r[19]?.length||0));i++)specs.push({name:'Core '+(i+1),get:r=>r[19]?.[i]});
+      return block('CPU utilization',rows,specs,{max:100})+(!mac?'<p class="footnote">This host’s metrics feed reports total CPU; per-core readings are unavailable.</p>':'');
+    }
+    if(metric==='gpu') return !mac?'<p class="footnote">GPU metrics are collected on the Mac workers.</p>':
+      (m.gpu_state!=='available'?`<p class="footnote">${esc(gpuNote(m,now))}</p>`:'')+
+      (m.gpu_state==='available'&&!number(m.gpu_percent)&&!rows.some(r=>number(r[8]))?'<div class="metric-chart"><h3>GPU activity</h3><div class="chart-empty">GPU utilization is not reported by this host.</div></div>':block('GPU activity',rows,[series('GPU',8),series('Renderer',17),series('Tiler',18)],{max:100}))+block('GPU memory',rows,[series('In use',15),series('Allocated',16)],{format:bytes})+'<p class="footnote">Per-GPU-core counters are not exposed. Renderer and tiler are activity counters, not individual cores.</p>';
+    if(metric==='memory') return block('RAM in use',rows,[series('Used',mac?9:5),series('Total',mac?10:6)],{format:bytes})+block('RAM utilization',rows,[series('Used',mac?5:2)],{max:100});
+    if(metric==='network') return block('Network traffic',rows,[series('Received ↓',mac?6:3),series('Sent ↑',mac?7:4)],{format:rate});
+    if(metric==='disk') return block('Disk I/O',rows,[series('Read',mac?13:7),series('Write',mac?14:8)],{format:rate})+block('Disk utilization',mac?rows:observed,[series('Used',mac?11:9)],{max:100})+block('Available disk space',mac?rows:observed,[series('Free',mac?12:10)],{format:bytes});
+    return mac?block('Active conversion jobs',rows,[series('Jobs',1)],{max:Math.max(1,m.capacity||1),format:value})+block('Recent conversion median',rows,[series('Conversion',3)],{format:n=>number(n)?value(n,2)+' sec':'—'})+block('Health response',rows,[series('Response',2)],{format:ms}):'<p class="footnote">Conversion metrics are collected on the Mac workers.</p>';
+  }
+  function chartControls(metric, range, global=false) {
+    return `<div class="chart-controls"><div class="metric-tabs" role="group" aria-label="Metric">${Object.entries(metrics).map(([key,label])=>`<button type="button" data-${global?'global-':''}metric="${key}" aria-pressed="${key===metric}">${label}</button>`).join('')}</div><div class="range-tabs" role="group" aria-label="Chart range">${[[300,'5 min'],[900,'15 min'],[3600,'1 hour']].map(([n,label])=>`<button type="button" data-${global?'global-':''}range="${n}" aria-pressed="${n===range}">${label}</button>`).join('')}</div></div>`;
+  }
+  function macCard(m, now, metric='cpu', range=900) {
+    const slots=number(m.capacity)?Math.min(16,m.capacity):0;
+    return `<article class="mac-card ${m.state==='offline'?'offline':''}"><div class="mac-head"><button class="machine-button" data-open="mac:${esc(m.id)}">${esc(m.name)}</button>${badge(m.state)}</div>${resourceGrid(m)}<p class="telemetry-note${m.resource_stale?' error-text':''}">${esc(resourceNote(m,now))}</p><p class="telemetry-note${m.gpu_stale?' error-text':''}">${esc(gpuNote(m,now))}</p><div class="mac-chart">${metricCharts(m,'mac',metric,range,now)}</div><div class="jobs${m.stale?' stale-reading':''}"><strong>${value(m.jobs)}</strong><span>/${value(m.capacity)} conversion jobs${m.stale?' · last known':''}</span></div><div class="capacity" aria-hidden="true">${Array.from({length:slots},(_,i)=>`<i class="${!m.stale && i<m.jobs?'used':''}"></i>`).join('')}</div><div class="mac-metrics"><div><span>Conversion median</span><b>${number(m.conversion_s)?value(m.conversion_s,2)+' sec':'—'}</b></div><div><span>Health response</span><b>${ms(m.latency_ms)}</b></div><div><span>Completed</span><b>${value(m.done)}</b></div><div><span>Recorded stuck</span><b>${value(m.stuck)}</b></div></div><div class="mac-foot"><span><b>${value(m.failed)}</b> failed</span><span><b>${value(m.canceled)}</b> canceled</span><span>Since worker start</span></div><p class="last-seen">${m.error?esc(m.error)+' · ':''}Seen ${esc(age(m.last_seen,now).toLowerCase())}</p></article>`;
+  }
+  function resourceNote(m, now) {
+    return !m.resource_metrics ? m.online ? 'Host telemetry update pending' : 'Host telemetry unavailable' : m.resource_stale || m.stale ? 'Last known resources · '+age(m.resource_sample_at,now).toLowerCase() : 'Resources sampled '+age(m.resource_sample_at,now).toLowerCase();
+  }
+  function gpuNote(m, now) {
+    if(m.gpu_state==='unavailable') return m.gpu_reason || 'GPU counters are not exposed by this Mac';
+    if(m.gpu_state==='error') return 'GPU sample failed · '+(number(m.gpu_sample_at)&&m.gpu_sample_at>0?'last known '+age(m.gpu_sample_at,now).toLowerCase():'readings unavailable');
+    if(m.gpu_state!=='available') return m.online?'GPU telemetry update pending':'GPU telemetry unavailable';
+    if(m.gpu_stale || m.stale) return 'Last known GPU readings · '+age(m.gpu_sample_at,now).toLowerCase();
+    if(!number(m.gpu_percent)) return 'GPU memory available · utilization is not reported by this host';
+    return m.gpu_devices>1?'GPU shows the busiest adapter':'GPU memory shares system RAM on Apple silicon';
+  }
+  function resourceGrid(m) {
+    return `<div class="resource-grid${m.resource_stale || m.stale?' stale-reading':''}"><div><span>CPU</span><div class="resource-value">${meter(m.cpu_percent)}</div><small>${value(m.cpus)} cores</small></div><div><span>RAM</span><div class="resource-value">${meter(m.memory_percent,true)}</div><small>${bytes(m.memory_used)} / ${bytes(m.memory_total)}</small></div><div class="${m.gpu_stale?'stale-reading':''}"><span>GPU</span><div class="resource-value">${meter(m.gpu_percent)}</div><small>Graphics activity</small></div><div class="${m.gpu_stale?'stale-reading':''}"><span>GPU memory in use</span><div class="resource-value">${bytes(m.gpu_memory_used)}</div><small>Allocated ${bytes(m.gpu_memory_allocated)}</small></div><div><span>Disk used</span><div class="resource-value">${meter(m.disk_percent)}</div><small>${bytes(m.disk_free)} free</small></div><div><span>Network</span><b class="network-value">↓ ${rate(m.network_rx)}<br>↑ ${rate(m.network_tx)}</b><small>Received / sent</small></div></div>`;
+  }
+  function replicaCard(m, w, now) {
+    return `<article class="replica-card${m.stale?' stale-reading':''}"><div class="mac-head"><h3>Replica ${value(w.replica)}</h3>${badge(w.state || (m.stale?'stale':'starting'))}</div><p class="detail-meta">${esc(m.name)} · ${esc(age(m.sample_at,now).toLowerCase())}${m.stale?' · last known':''}</p><dl class="workload-grid"><div><dt>CPU</dt><dd>${cores(w.cpu_cores)}</dd></div><div><dt>Memory</dt><dd>${bytes(w.memory_bytes)}</dd></div><div><dt>Network ↓ / ↑</dt><dd>${rate(w.network_rx)} / ${rate(w.network_tx)}</dd></div><div><dt>Disk read / write</dt><dd>${rate(w.disk_read)} / ${rate(w.disk_write)}</dd></div></dl></article>`;
+  }
+  function streamCards(s) {
+    const modes=s.modes || {}, original=sum([modes['as-is'],modes.original]), remux=modes.remux, converted=modes.converted;
+    const fields=[['Segment preparation',ms(s.segment_p50_ms),`Median · p95 ${ms(s.segment_p95_ms)} · ${value(s.segment_samples)} samples`],['Source fetch speed',number(s.source_fetch_mbps)?value(s.source_fetch_mbps,1)+' Mbps':'—',`${value(s.paused_sources)} sources backing off`],['Playback modes',`${value(original)} / ${value(remux || 0)} / ${value(converted || 0)}`,'Original / remux / converted'],['Media cache',bytes(s.cache_bytes),`${value(s.cpu_jobs)} CPU jobs · ${value(s.mac_jobs)} Mac requests`]];
+    return fields.map(([label,reading,detail])=>`<div class="stream-tile"><span>${esc(label)}</span><strong>${esc(reading)}</strong><small>${esc(detail)}</small></div>`).join('');
+  }
+  function machineRow(m, now) {
+    return `<tr class="${m.stale?'stale-reading':''}"><td><button class="machine-button" data-open="host:${esc(m.id)}">${esc(m.name)}</button><span class="sub replica-label">${esc((m.replicas || []).map(n=>'Replica '+value(n)).join(' · '))}</span><span class="sub">${esc(m.region || 'Region unknown')} · ${esc(m.pool || 'Unassigned')}</span></td><td>${badge(m.state)}</td><td data-label="CPU">${meter(m.cpu_percent)}</td><td data-label="Memory">${meter(m.memory_percent,true)}</td><td data-label="Disk used">${meter(m.disk_percent)}</td><td data-label="Network ↓ / ↑">${rate(m.network_rx)} / ${rate(m.network_tx)}</td><td data-label="Sample">${esc(age(m.sample_at,now))}${m.stale?'<span class="sub">Last known values</span>':''}</td></tr>`;
+  }
+  function filterMachines(nodes, search, filter) {
+    const query=search.trim().toLowerCase();
+    return nodes.filter(m=>(filter==='all' || filter==='attention' && attention(m)) && `${m.name} ${m.id} ${m.region || ''} ${m.pool || ''}`.toLowerCase().includes(query)).sort((a,b)=>Number(attention(b))-Number(attention(a)) || Number(a.id)-Number(b.id));
+  }
+  function displaySnapshot(data, received, error, now=Date.now()) {
+    if(!data || !error && now-received<=45000) return data;
+    const old=n=>({...n,online:false,stale:true,resource_stale:true,gpu_stale:true,workloads:n.workloads?.map(w=>({...w,state:'stale'})),state:['offline','loading'].includes(n.state)?n.state:'stale'});
+    return {...data,macs:data.macs.map(old),machines:data.machines.map(old)};
+  }
+  const exported={number,esc,value,pct,bytes,rate,age,badge,chart,fleetTrends,macCard,machineRow,filterMachines,displaySnapshot,replicaCard,streamCards,resourceNote,gpuNote,seriesChart,metricCharts,chartControls};
+  if(typeof module!=='undefined' && module.exports) module.exports=exported;
+  if(typeof document==='undefined') return;
+  const $=id=>document.getElementById(id), S={data:null,error:null,paused:false,timer:null,request:null,received:0,detail:null,metric:'cpu',range:900,macMetric:'cpu',macRange:900};
+  function viewData() { return displaySnapshot(S.data,S.received,S.error); }
+  function safeRunners(base) { try { const u=new URL(base); return u.protocol==='https:' && !u.username && !u.password ? u.origin : 'https://runners.billybishop4-workers.xyz'; } catch { return 'https://runners.billybishop4-workers.xyz'; } }
+  function freshness() {
+    const old=Date.now()-S.received>45000, failed=S.error || old;
+    $('freshness').textContent=S.paused?'Updates paused':document.hidden?'Updates paused while hidden':S.error?'Refresh failed · showing last known data':!S.data?'Connecting to your machines…':S.data.refreshing && !Object.keys(S.data.sources).length?'Checking services…':`${old?'Last update':'Updated'} ${age(S.received/1000).toLowerCase()}`;
+    $('freshness').className=failed?'stale':S.data&&!S.paused?'live':'';
+    $('refresh').disabled=!!S.request;
+  }
+  function renderTable() {
+    if(!S.data) return;
+    const rows=filterMachines(viewData().machines,$('search').value,$('filter').value);
+    $('machines').innerHTML=rows.map(m=>machineRow(m,Date.now()/1000)).join('') || '<tr><td colspan="7" class="empty">No machines match this view.</td></tr>';
+    $('table-count').textContent=`${rows.length} of ${S.data.machines.length}`;
+  }
+  function render() {
+    if(!S.data) { freshness(); return; }
+    const d=viewData(), now=Date.now()/1000, nodes=[...d.macs,...d.machines], online=nodes.filter(n=>n.online).length;
+    const focus=document.activeElement?.dataset?.open;
+    const known=d.macs.filter(m=>!m.stale), jobs=available(known.map(m=>m.jobs));
+    const tiles=[['Machines online',`${online}<em>/ ${nodes.length || '—'}</em>`,`${nodes.filter(attention).length} need attention`],['Active streams',value(d.service.sessions),'Playback service · replica '+d.service.replica],['Mac conversion jobs',value(jobs),`${known.length} of ${d.macs.length} workers reporting`],['Queued work',value(d.service.queued),`${value(d.service.reads)} reads · ${value(d.service.media_processes)} media processes`]];
+    $('summary').innerHTML=tiles.map(([label,note,sub])=>`<div class="summary-tile"><span>${esc(label)}</span><strong>${note}</strong><small>${esc(sub)}</small></div>`).join('');
+    $('mac-count').textContent=d.macs.length; $('fleet-count').textContent=d.machines.length;
+    $('mac-chart-controls').innerHTML=chartControls(S.macMetric,S.macRange,true);
+    $('macs').innerHTML=d.macs.map(m=>macCard(m,now,S.macMetric,S.macRange)).join('') || '<div class="empty">No Mac workers are configured.</div>';
+    const workloads=d.machines.flatMap(m=>(m.workloads || []).map(w=>[m,w]));
+    $('replica-count').textContent=workloads.length;
+    $('replicas').innerHTML=workloads.map(([m,w])=>replicaCard(m,w,now)).join('') || '<div class="empty">Waiting for Frame replica placements.</div>';
+    $('streaming').innerHTML=streamCards(d.service);
+    $('stream-scope').textContent=`Frame replica ${d.service.replica} · server timings for recent segments`;
+    const notices=[];
+    if(S.error) notices.push('The latest dashboard update failed. Values below are from the last successful update.');
+    for(const name of ['fleet','metrics']) if(d.sources[name]?.error) notices.push(`${name==='fleet'?'Frame host availability':'Host resource metrics'} could not refresh (${d.sources[name].error}).`);
+    const badMac=d.macs.filter(m=>attention(m));
+    if(badMac.length) notices.push(badMac.map(m=>m.name+': '+(labels[m.state]||m.state).toLowerCase()).join(' · ')+'.');
+    $('notice').textContent=notices.join(' '); $('notice').hidden=!notices.length;
+    const fresh=d.machines.filter(m=>!m.stale), trend=fleetTrends(d.machines);
+    $('cpu-value').textContent=pct(average(fresh.map(m=>m.cpu_percent)));
+    const paired=fresh.filter(m=>number(m.memory_total)&&number(m.memory_used)&&m.memory_total>0), total=available(paired.map(m=>m.memory_total)), used=available(paired.map(m=>m.memory_used));
+    $('memory-value').textContent=number(used)&&total?pct(used/total*100):'—';
+    $('cpu-chart').innerHTML=chart(trend,1,'Frame host average CPU over the last hour');
+    $('memory-chart').innerHTML=chart(trend,2,'Frame host memory percentage over the last hour','var(--blue)');
+    $('runners-link').href=safeRunners(d.runners_url)+'/#/apps/frame';
+    $('service-detail').textContent=`Frame replica ${d.service.replica} · ${d.service.code} · ${bytes(d.service.cache_bytes)} media cache`;
+    renderTable(); freshness(); if(S.detail) renderDetail();
+    if(focus) [...document.querySelectorAll('[data-open]')].find(el=>el.dataset.open===focus)?.focus({preventScroll:true});
+  }
+  function renderDetail() {
+    const [kind,id]=S.detail.split(':'), d=viewData(), m=(kind==='mac'?d.macs:d.machines).find(n=>n.id===id);
+    if(!m) { $('detail-body').textContent='This machine is no longer listed.'; return; }
+    $('detail-kind').textContent=kind==='mac'?'MAC CONVERSION WORKER':'FRAME REPLICA HOST'; $('detail-title').textContent=m.name;
+    const fields=[['Host CPU',pct(m.cpu_percent)+' · '+value(m.cpus)+' cores'],['Memory',bytes(m.memory_used)+' / '+bytes(m.memory_total)],['Free disk',bytes(m.disk_free)+' / '+bytes(m.disk_total)],['Network received',rate(m.network_rx)],['Network sent',rate(m.network_tx)],['Disk read / write',rate(m.disk_read)+' / '+rate(m.disk_write)],['Resource sample',age(kind==='mac'?m.resource_sample_at:m.sample_at)],...(kind==='mac'?[['GPU utilization',pct(m.gpu_percent)],['GPU renderer / tiler',pct(m.gpu_renderer_percent)+' / '+pct(m.gpu_tiler_percent)],['GPU memory in use',bytes(m.gpu_memory_used)],['GPU memory allocated',bytes(m.gpu_memory_allocated)],['GPU driver',m.gpu_name||'Not reported'],['GPU sample',age(m.gpu_sample_at)],['Jobs',value(m.jobs)+' / '+value(m.capacity)],['Completed',value(m.done)],['Failed',value(m.failed)],['Canceled',value(m.canceled)],['Recorded stuck',value(m.stuck)],['Engine',m.engine||'Not reported'],['Median of last 8 conversions',number(m.conversion_s)?value(m.conversion_s,3)+' sec':'—'],['Last conversion',age(m.last_conversion_at)],['Health response',ms(m.latency_ms)],['Network errors ↓ / ↑',value(m.network_errors_rx,2)+' / '+value(m.network_errors_tx,2)+' per sec'],['Dropped packets ↓ / ↑',value(m.network_drops_rx,2)+' / '+value(m.network_drops_tx,2)+' per sec'],['Host uptime',number(m.uptime_s)?value(m.uptime_s/3600,1)+' hours':'—'],['Collector time',ms(m.sample_cost_ms)],['Revision',m.revision||'—']]:[['Host response',ms(m.latency_ms)],['Frame replicas',(m.replicas || []).map(n=>value(n)).join(', ')],['Running since',number(m.started_at)?new Date(m.started_at*1000).toLocaleString():'—']])];
+    const top=$('detail').scrollTop;
+    $('detail-body').innerHTML=badge(m.state)+`<p class="detail-meta">${kind==='mac'?'Counts reset when the worker restarts.':esc(m.location||m.region||'Location not reported')} · Last seen ${esc(age(m.last_seen).toLowerCase())}</p>`+(m.stale?'<p class="error-text">These are last known readings. Current usage is unavailable.</p>':'')+(kind==='mac'?`<p class="detail-meta">${esc(gpuNote(m,Date.now()/1000))}. GPU readings describe graphics activity; conversion jobs and timings show encoding workload.</p>`:'')+(m.error?`<p class="error-text">${esc(m.error)}</p>`:'')+(m.reasons?.length?`<p class="error-text">${esc(m.reasons.join(' · '))}</p>`:'')+chartControls(S.metric,S.range)+`<div class="detail-charts">${metricCharts(m,kind,S.metric,S.range,Date.now()/1000)}</div><dl class="detail-grid">${fields.map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`+(kind==='mac'?'':`<a class="detail-link" href="${esc(safeRunners(S.data.runners_url))}/#/machines/${encodeURIComponent(m.id)}" target="_blank" rel="noopener noreferrer">View machine in Runners ↗</a>`);
+    $('detail').scrollTop=top;
+  }
+
+  function schedule(seconds=15) { clearTimeout(S.timer); if(!S.paused&&!document.hidden) S.timer=setTimeout(refresh,seconds*1000); }
+  async function refresh() {
+    if(S.request) return;
+    const request=new AbortController(); S.request=request; freshness();
+    const timeout=setTimeout(()=>request.abort(),8000);
+    try {
+      const r=await fetch('/api/health',{cache:'no-store',signal:request.signal}); if(!r.ok) throw Error('HTTP '+r.status);
+      const data=await r.json(); if(!Array.isArray(data.macs)||!Array.isArray(data.machines)||!data.service||!data.sources) throw Error('Invalid health response');
+      S.data=data; S.received=Date.now(); S.error=null; S.ageStale=false;
+    } catch(error) { if(!document.hidden) S.error=error.name==='AbortError'?'Request timed out':error.message; }
+    finally { clearTimeout(timeout); S.request=null; render(); if(!S.data&&S.error){$('notice').hidden=false;$('notice').textContent='Health metrics could not load. Use Refresh to retry.';} schedule(S.error?30:S.data?.refreshing?3:15); }
+  }
+  $('refresh').addEventListener('click',()=>{clearTimeout(S.timer);refresh();});
+  $('pause').addEventListener('click',()=>{S.paused=!S.paused;$('pause').textContent=S.paused?'Resume updates':'Pause updates';$('pause').setAttribute('aria-pressed',String(S.paused));clearTimeout(S.timer);freshness();if(!S.paused)refresh();});
+  $('search').addEventListener('input',renderTable); $('filter').addEventListener('change',renderTable);
+  document.addEventListener('click',e=>{const button=e.target.closest('[data-open]');if(button){S.detail=button.dataset.open;renderDetail();$('detail').showModal();}});
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-metric],[data-range],[data-global-metric],[data-global-range]');if(!b)return;
+    if(b.dataset.globalMetric){S.macMetric=b.dataset.globalMetric;render();}
+    else if(b.dataset.globalRange){S.macRange=Number(b.dataset.globalRange);render();}
+    else {if(b.dataset.metric)S.metric=b.dataset.metric;else S.range=Number(b.dataset.range);renderDetail();}
+  });
+  $('close-detail').addEventListener('click',()=>$('detail').close()); $('detail').addEventListener('close',()=>{S.detail=null;});
+  document.addEventListener('visibilitychange',()=>{clearTimeout(S.timer);if(document.hidden)S.request?.abort();else if(!S.paused)refresh();freshness();});
+  window.addEventListener('pagehide',()=>{clearTimeout(S.timer);S.request?.abort();});
+  window.addEventListener('pageshow',e=>{if(e.persisted&&!S.paused)refresh();});
+  setInterval(()=>{if(S.data&&Date.now()-S.received>45000&&!S.ageStale){S.ageStale=true;render();}else freshness();},5000); refresh();
+})();
+</script>
+</body>
+</html>
+"""
+
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Frame torrents</title><style>
 :root{color-scheme:light dark;--fg:#1a1a1a;--mute:#6b6b6b;--line:#e3e3e3;--bg:#fff;--accent:#2a5bd7}
@@ -6960,6 +7961,7 @@ code{font:13px ui-monospace,Menlo,monospace;word-break:break-all}a{color:var(--a
 <p>Add to Stremio: <code>__BASE__/manifest.json</code> · <a id="inst" href="#">install</a></p>
 <p class="s">Whatever plays is fetched by many servers at once, each a different part, and kept in their RAM.</p>
 <p>Watch in the browser: <a href="__BASE__/watch">__BASE__/watch</a> (the gdrive addon's big streams, converted as they play)</p>
+<p><a href="/health">Mac workers &amp; Frame replica health</a></p>
 <pre id="st">…</pre>
 <script>
 async function tick(){try{const s=await (await fetch("status")).json();document.getElementById("st").textContent=JSON.stringify(s,null,2)}catch(e){}}
@@ -8277,6 +9279,10 @@ WATCH_PAGE = r"""<!doctype html>
     .tb { flex-direction: row; font-size: 11px; }
   }
 
+  .health-link { display:flex; align-items:center; gap:6px; margin-left:auto; color:var(--t2); font-size:12px; min-height:44px; padding:8px; border-radius:10px; }
+  .health-link svg { width:21px; height:21px; }
+  .health-link:hover { color:var(--t1); background:rgba(150,130,240,.12); }
+  @media(max-width:879px) { .health-link span { display:none; } }
 </style>
 </head>
 <body>
@@ -8285,6 +9291,7 @@ WATCH_PAGE = r"""<!doctype html>
   <a class="ibtn glass hidden" id="tBack" href="#/" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
   <a class="brand" href="#/" data-tab="home" aria-label="Frame: home"><span class="mark"><svg viewBox="0 0 11 13"><path d="M0 1.2v10.6a1 1 0 0 0 1.5.86l8.9-5.3a1 1 0 0 0 0-1.72L1.5.34A1 1 0 0 0 0 1.2z"/></svg></span><span class="word">Frame</span></a>
   <div id="navTitle" aria-hidden="true"></div>
+  <a class="health-link" href="/health" aria-label="Mac workers and Frame replica health"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Health</span></a>
 </header>
 <nav id="tabbar" aria-label="Sections">
   <div class="tb-cap"><i class="tb-pill" aria-hidden="true"></i>
@@ -9903,6 +10910,149 @@ window.addEventListener("hashchange", () => {
   setTimeout(syncVersionFeeds, 0);
 });
 document.addEventListener("visibilitychange", syncVersionFeeds);
+// Keep only playback corrections that actually reached a playing frame on this device.
+function playbackChoiceKey(url, file, info) {
+  const u = new URL(url, location.href), match = /\/(hls|file)\/([^/]+)\//.exec(u.pathname);
+  if (!match) return null;
+  const mode = match[1] === "file" ? "file" : /\/orig\.m3u8$/.test(u.pathname) ? "original" : "auto";
+  return JSON.stringify([file ? verId(file, info) : match[2], mode]);
+}
+function compatiblePlaybackURL(url, force) {
+  const u = new URL(url, location.href), match = /\/(?:hls|file)\/([^/]+)\//.exec(u.pathname);
+  if (!match || u.searchParams.get("force") === "1") return null;
+  u.pathname = "/hls/" + match[1] + "/index.m3u8";
+  u.search = force ? "?force=1" : "";
+  return u.href;
+}
+function correctedPlaybackURL(url, file, info) {
+  const key = playbackChoiceKey(url, file, info), choice = key && store.get("playback-corrections-v1", {})[key];
+  if (!choice || Date.now() - choice.at > 7 * 864e5) return url;
+  return compatiblePlaybackURL(url, choice.force) || url;
+}
+function rememberPlayback(p) {
+  if (!p.started || !p.correctionKeys || !p.correctionKeys.length) return;
+  const known = store.get("playback-corrections-v1", {}), now = Date.now();
+  const force = new URL(p.url, location.href).searchParams.get("force") === "1";
+  p.correctionKeys.forEach(key => { if (key) known[key] = {force, at: now}; });
+  const kept = {};
+  Object.keys(known).filter(key => now - known[key].at < 7 * 864e5)
+    .sort((a, b) => known[b].at - known[a].at).slice(0, 200).forEach(key => { kept[key] = known[key]; });
+  store.set("playback-corrections-v1", kept);
+}
+
+// One lease per playback attempt. A stopped attempt can never revive itself.
+function beginPlayback(p) {
+  const u = new URL(p.url, location.href), match = /\/(?:hls|file)\/([^/]+)\//.exec(u.pathname);
+  if (!match) { p.mediaUrl = p.url; return; }
+  const sid = crypto.randomUUID().replace(/-/g, "");
+  const s = p.session = {sid, endpoint: u.origin + "/hls/" + match[1] + "/session", requests: new Set(), seq: 0, ended: false};
+  u.searchParams.set("sid", sid);
+  u.searchParams.set("managed", "1");
+  u.searchParams.set("start", String(p.from || 0));
+  if (p.native) u.searchParams.set("cap", "hevc");
+  p.mediaUrl = u.href;
+  p.lastMovement = Date.now();
+  p.lastTime = p.from || 0;
+  s.timer = setTimeout(() => pollPlayback(p), 1000);
+}
+
+function releasePlayback(p) {
+  const s = p && p.session;
+  if (!s || s.ended) return;
+  s.ended = true;
+  clearTimeout(s.timer);
+  clearTimeout(s.seekTimer);
+  s.requests.forEach(c => c.abort());
+  s.requests.clear();
+  const url = s.endpoint + "?sid=" + s.sid + "&action=stop";
+  // Beacons may wait behind native media traffic. A foreground stop has higher
+  // priority and keepalive survives page dismissal; beacon is the fallback.
+  const beacon = () => { if (navigator.sendBeacon) navigator.sendBeacon(url, ""); };
+  try {
+    fetch(url, {method: "POST", keepalive: true, priority: "high", cache: "no-store"})
+      .then(r => { if (!r.ok) beacon(); }, beacon);
+  } catch (_) { beacon(); }
+}
+
+async function playbackControl(p, action, extra) {
+  const s = p.session;
+  if (!s || s.ended) return null;
+  const controller = new AbortController();
+  s.requests.add(controller);
+  const deadline = setTimeout(() => controller.abort(), 5000);
+  try {
+    const query = new URLSearchParams({sid: s.sid, managed: "1", action, ...extra});
+    const r = await fetch(s.endpoint + "?" + query, {method: "POST", priority: "high", cache: "no-store", signal: controller.signal});
+    if (!r.ok || playing !== p || s.ended) return null;
+    return await r.json();
+  } catch (_) { return null; }
+  finally { clearTimeout(deadline); s.requests.delete(controller); }
+}
+
+async function pollPlayback(p) {
+  const s = p.session;
+  if (!s || s.ended || playing !== p) return;
+  const file = /\/file\//.test(p.url);
+  const progress = p.started && !vid.seeking && Number.isFinite(vid.currentTime) ? {at: String(vid.currentTime), seq: String(s.seq)} : {};
+  const state = await playbackControl(p, "keep", {mode: file ? "as-is" : "hls", cap: p.native ? "hevc" : "h264", ...progress});
+  if (playing !== p || s.ended) return;
+  if (state && state.error) { failPlay("Source unavailable", state.error); return; }
+  if (state && state.mode && state.mode !== p.effectiveMode) {
+    p.effectiveMode = state.mode;
+    const label = state.mode === "converted" ? "Converted" : state.mode === "remux" ? "Original video · compatible audio" : "Original";
+    byId("pVer").querySelector(".vk").textContent = label;
+    byId("pFileDetails").querySelector(".vk").textContent = label;
+  }
+  if (state && state.fallback && file) { recoverPlayback(p, "using compatible playback", false); return; }
+  // Progress, not repeated waiting events, owns this clock. Paused playback and
+  // a rejected autoplay gesture must not be mistaken for a stalled decoder.
+  const stalled = (!p.started && !p.needsGesture) || (p.started && !vid.paused && bufferedAhead() < .5);
+  if (stalled && Date.now() - p.lastMovement > 25000) {
+    if (!recoverPlayback(p, "the stream stopped responding", true)) failPlay("Stream did not respond", "Choose another stream or try again.");
+    return;
+  }
+  s.timer = setTimeout(() => pollPlayback(p), p.started ? (vid.paused ? 12000 : 4000) : 2000);
+}
+
+function recoverPlayback(p, reason, force) {
+  if (playing !== p || !p.session || p.session.ended) return false;
+  if ((p.fallbacks || 0) >= 2) return false;
+  const url = compatiblePlaybackURL(p.url, force);
+  if (!url) return false;
+  const keys = (p.correctionKeys || []).concat(playbackChoiceKey(p.url, p.file, p.info));
+  play(url, "converted", p.file, p.info, p.title, p.ep, "switch");
+  playing.correctionKeys = keys;
+  playing.twinned = reason;
+  return true;
+}
+
+function playbackSeek(p, seconds) {
+  if (!p || !p.session || p.session.ended || !Number.isFinite(seconds)) return;
+  const s = p.session;
+  clearTimeout(s.seekTimer);
+  const seq = ++s.seq;
+  p.lastMovement = Date.now();
+  s.seekTimer = setTimeout(() => {
+    if (playing === p && !s.ended) playbackControl(p, "seek", {at: String(seconds), seq: String(seq)});
+  }, 80);
+}
+
+let pageResume = null;
+window.addEventListener("pagehide", () => {
+  if (!playing) return;
+  savePos(true);
+  pageResume = {...playing, resumeAt: vid.currentTime};
+  releasePlayback(playing);
+  vid.pause();
+  teardown();
+});
+window.addEventListener("pageshow", e => {
+  if (!e.persisted || !pageResume) return;
+  const p = pageResume;
+  pageResume = null;
+  playing = p;
+  play(p.url, p.kind, p.file, p.info, p.title, p.ep, "again");
+});
 const vid = byId("vid"), pl = byId("v-player"), pframe = byId("pFrame"), pgest = byId("pGest"), psc = byId("pScrub");
 const landMQ = matchMedia("(orientation: landscape)"), mouseMQ = matchMedia("(hover: hover) and (pointer: fine)");
 const canFS = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);  // (false on an iPhone: there only the native player goes full screen)
@@ -10040,15 +11190,14 @@ function loadHls() {
   });
   return loadHls.p;
 }
-const PATIENT = {maxTimeToFirstByteMs: 30000, maxLoadTimeMs: 120000, timeoutRetry: {maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0},
-                 errorRetry: {maxNumRetry: 6, retryDelayMs: 2000, maxRetryDelayMs: 6000}};  // (a piece being made sends nothing for up to
-function hlsConfig(from) {  // (90 s ahead, 30 s behind; the master may take a cold probe's 35 s; playlists come from the reader)
-  return {startPosition: from || -1, maxBufferLength: 90, maxMaxBufferLength: 600, maxBufferSize: 200 * 1000 * 1000, backBufferLength: 30,
-          fragLoadPolicy: {default: PATIENT},
-          playlistLoadPolicy: {default: Object.assign({}, PATIENT, {maxLoadTimeMs: 60000, errorRetry: {maxNumRetry: 2, retryDelayMs: 1000, maxRetryDelayMs: 2000}})},  // (a
-          manifestLoadPolicy: {default: {maxTimeToFirstByteMs: 60000, maxLoadTimeMs: 60000, timeoutRetry: {maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0},
-                                         errorRetry: {maxNumRetry: 1, retryDelayMs: 1000, maxRetryDelayMs: 8000}}}};
+const PATIENT = {maxTimeToFirstByteMs: 20000, maxLoadTimeMs: 40000,
+  timeoutRetry: {maxNumRetry: 1, retryDelayMs: 250, maxRetryDelayMs: 1000},
+  errorRetry: {maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 1000}};
+function hlsConfig(from) {
+  return {startPosition: from || -1, maxBufferLength: 20, maxMaxBufferLength: 30, maxBufferSize: 48 * 1024 * 1024, backBufferLength: 20,
+    fragLoadPolicy: {default: PATIENT}, playlistLoadPolicy: {default: PATIENT}, manifestLoadPolicy: {default: PATIENT}};
 }
+
 function kindLabel(kind) {  // ("🎞 Original · 4K HDR Blu-ray": its pictogram and words)
   const i = kind.indexOf(" · "), sect = i >= 0 ? kind.slice(0, i) : kind, rest = i >= 0 ? kind.slice(i + 3) : "";
   if (SECT[sect]) return sectLabel(sect) + esc(rest ? " · " + rest : "");
@@ -10083,8 +11232,11 @@ function snapFrame() {  // (the frame on screen kept as a picture while the same
 const nextWords = (ep) => "Next: S" + ep.s + ":E" + ep.e + (ep.name ? " · " + ep.name : "");
 const WHY = {retry: "Reconnecting…", again: "Trying again…", "switch": "Switching to the converted stream…"};
 function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this is, else the title page's own (copied); why: "retry",
-  const prev = playing, prevT = prev && mediaFor === prev ? vid.currentTime : 0;
-  if (prev) { savePos(true); if (why) snapFrame(); }
+  const requestedURL = url;
+  url = correctedPlaybackURL(url, file, info);
+  if (url !== requestedURL) kind = "converted";
+  const prev = playing, prevT = prev && mediaFor === prev ? vid.currentTime : prev && prev.resumeAt || 0;
+  if (prev) { savePos(true); if (why) snapFrame(); releasePlayback(prev); teardown(); }
   else if (pl.classList.contains("hidden")) {  // (focus goes back there when the player closes; the input's own time starts the shield)
     const a = document.activeElement, ev = window.event;
     openerEl = a && a !== document.body && !pl.contains(a) ? a : null;
@@ -10096,6 +11248,8 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   const mine = {key: title.id + (ep ? ":" + ep.s + ":" + ep.e : ""), url: url, kind: kind || "", file: file || "", info: info || "", title: title, ep: ep,
                 why: why || null, eps: prev && prev.title.id === title.id ? prev.eps : null, replays: 0, started: false, apple: appleFiles.has(url), native: applePlayer()};
   playing = mine;
+  mine.correctionKeys = url !== requestedURL ? [playbackChoiceKey(requestedURL, file, info)] : [];
+  mine.fallbacks = why && why !== "next" ? (prev && prev.fallbacks || 0) + (why === "switch" ? 1 : 0) : 0;
   configureNativePlayer();
   lastPlayed = {id: title.id, type: title.type, ep: ep ? {s: ep.s, e: ep.e} : null};
   lastSave = Date.now();
@@ -10118,6 +11272,7 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   if (!why || why === "next") byId("pStreamDetails").open = false;
   const saved = (posStore()[posKey(mine)] || {}).t || 0;
   mine.from = why && why !== "next" && prevT > 1 ? prevT : saved > 15 ? saved - 5 : 0;  // (a reconnect goes on from the very place; a resume a
+  beginPlayback(mine);
   setUi("start");
   setBusy("start", why === "next" ? nextWords(ep) : why ? WHY[why] : mine.from ? "Picking up at " + fmtTime(mine.from) : "", !!why);
   if (prev && (!why || why === "next")) anim(byId("pDock"), RISE, 260);
@@ -10142,7 +11297,7 @@ function attach(mine) {  // (the stream itself: the browser's own for a file or 
     go("#/play");
     setTimeout(() => { if (playing === mine) { loadEps(mine); mediaSession(); } });
   });
-  const url = mine.url, from = mine.from, own = vid.canPlayType("application/vnd.apple.mpegurl"), mse = !!(window.MediaSource || window.ManagedMediaSource);
+  const url = mine.mediaUrl || mine.url, from = mine.from, own = vid.canPlayType("application/vnd.apple.mpegurl"), mse = !!(window.MediaSource || window.ManagedMediaSource);
   if (!/\/hls\//.test(url) || (own && (mine.native || !mse))) {
     vid.src = url;
     if (from) vid.addEventListener("loadedmetadata", () => { if (playing === mine) vid.currentTime = from; }, {once: true});
@@ -10163,6 +11318,7 @@ function startPlay(mine) {  // (play; refused (nothing has allowed sound yet): t
   vid.defaultPlaybackRate = vid.playbackRate = rate;
   vid.play().catch((e) => {
     if (playing !== mine || vid.error || !e || e.name !== "NotAllowedError") return;  // (an aborted play: the next load's, nothing to say)
+    mine.needsGesture = true;
     setBusy(null);
     setUi("pause");
     if (mine.native) { byId("pNativePlay").classList.remove("hidden"); nativeNotice("Tap Play to start the video."); }
@@ -10208,14 +11364,8 @@ function wireHls(h, mine) {
     }
     let why = "";
     try { why = d.response && d.response.text ? JSON.parse(d.response.text).error || "" : ""; } catch (e) {}
-    if (d.details === "manifestLoadError" && /\/orig\.m3u8/.test(mine.url) && code === 404) {  // (an Original the fleet may not play as it is:
-      origCheck(mine.url).then((bad) => { if (playing === mine && hls === h) twin(bad && bad.code === 404 && /as it is/.test(bad.why) ? markUnfit(mine, unfitWhy(bad.why)) : ""); });
-      return;
-    }
-    if (d.details === "manifestLoadError" && /\/orig\.m3u8/.test(mine.url) && code !== 404) {  // (an Original not ready (a file TorBox hadn't sent
-      const n = mine.origTries = (mine.origTries || 0) + 1;
-      if (n <= 3) { setTimeout(() => { if (playing === mine && hls === h) h.loadSource(mine.url); }, 1500 * n); return; }
-      if (twin("the Original didn't start", true)) return;
+    if (code >= 500 && /manifest|level/.test(d.details)) {
+      failPlay("Source unavailable", "This source is not responding. Choose another stream or try again."); return;
     }
     if (twin()) return;
     failPlay("Couldn't play this stream", (why ? why + ". " : HLSWHY[d.details] ? HLSWHY[d.details] + " " : "The stream stopped. ") + "Try again, or pick another stream.");
@@ -10223,6 +11373,8 @@ function wireHls(h, mine) {
 }
 function failPlay(title, detail, kind) {  // (an error: a card that stays until it's acted on; the film paused, its loading stopped)
   if (!playing) return;
+  playing.resumeAt = vid.currentTime;
+  releasePlayback(playing);
   if (nativeFullscreen()) exitFull();  // A failed system player must reveal the retry/version actions.
   if (inPip()) togglePip();
   errKind = kind || "other"; httpFail = null;
@@ -10234,26 +11386,18 @@ function failPlay(title, detail, kind) {  // (an error: a card that stays until 
   byId("pErrP").textContent = detail || "";
   byId("pErr").classList.remove("hidden");
   setUi("error");
+  teardown();
 }
 function bufferedAhead() {  // (seconds of picture left to play where the playhead is)
   const t = vid.currentTime, b = vid.buffered;
   for (let i = 0; i < b.length; i++) if (b.start(i) <= t + .1 && t < b.end(i)) return b.end(i) - t;
   return 0;
 }
-function tryAgain() {  // (the card's Try again: a part the fleet failed is asked for again on the same stream, from where it stopped (nothing
+function tryAgain() {
   const p = playing;
-  if (!p) return;
-  if (errKind === "http" && hls && mediaFor === p) {
-    byId("pErr").classList.add("hidden");
-    errKind = null; httpFail = null; p.stopped = false; retrying = true;
-    setUi("buffer");
-    setBusy("retry", "", true);
-    try { hls.startLoad(); } catch (e) {}
-    vid.play().catch(() => {});
-    return;
-  }
-  play(p.url, p.kind, p.file, p.info, p.title, p.ep, "again");
+  if (p) play(p.url, p.kind, p.file, p.info, p.title, p.ep, "again");
 }
+
 function elsewhere(d) {  // (a playlist or piece the master sent to a copy's own address, not this site's: that copy may be gone)
   const u = d.url || (d.frag && d.frag.url) || (d.context && d.context.url) || "";
   return /^https?:\/\//.test(u) && u.indexOf("//" + location.host + "/") < 0;
@@ -10265,14 +11409,11 @@ function replay(mine) {  // (the same version once more, from where it was, twic
   play(mine.url, mine.kind, mine.file, mine.info, mine.title, mine.ep, "retry");
   playing.replays = n;
 }
-function twin(why, keep) {  // (an Original that can't play here: its converted twin instead, said at once with why; keep: it may next
+function twin(why, keep) {
   const p = playing;
-  if (!p || !/\/orig\.m3u8/.test(p.url)) return false;
-  play(p.url.replace("/orig.m3u8", "/index.m3u8"), "converted (the original can't play here)", p.file, p.info, p.title, p.ep, "switch");
-  playing.twinned = why || "this browser can't play the Original";
-  if (keep) playing.orig = {url: p.url, kind: p.kind};
-  return true;
+  return p && recoverPlayback(p, why || "this browser needs compatible playback", true);
 }
+
 const UNFIT = [[/keyframe|Matroska/, "this Original's file has no keyframe index"], [/Dolby Vision only/, "this Original is Dolby Vision only"],
                [/video is/, "this Original's video doesn't play in browsers"]];
 const unfitWhy = (said) => (UNFIT.find((u) => u[0].test(said)) || [0, "this Original can't play as it is"])[1];
@@ -10294,23 +11435,11 @@ function origCheck(url) {  // (what the fleet says of an Original: null when its
     return get(vu).then((list) => { const map = /#EXT-X-MAP:URI="([^"]+)"/.exec(list); return map ? get(new URL(map[1], vu).href).then(() => null) : null; });
   }).catch((e) => (e && e.code !== undefined ? e : {code: 0, why: ""}));
 }
-function origFailed(p) {  // (Safari's own player gave up on an Original: the fleet says why. One it can't play as it is goes converted at
-  const t = vid.currentTime, n = p.origTries = (p.origTries || 0) + 1, code = vid.error ? vid.error.code : 0;
-  retrying = true;
-  if (p.started) setBusy("retry", "", true);  // (before its first frame it's still "Starting…", one wait with one word)
-  origCheck(p.url).then((bad) => {
-    if (playing !== p) return;
-    if (bad && bad.code === 404 && /as it is/.test(bad.why)) { twin(markUnfit(p, unfitWhy(bad.why))); return; }
-    if (!bad && n > 1 && code !== 2) { twin(markUnfit(p, "Safari couldn't play this Original", true)); return; }
-    if (n > 3) { twin("the Original didn't start", true); return; }
-    setTimeout(() => {
-      if (playing !== p) return;
-      vid.src = p.url;
-      if (t > 1) vid.addEventListener("loadedmetadata", () => { if (playing === p) vid.currentTime = t; }, {once: true});
-      startPlay(p);
-    }, bad ? 1500 * n : 400);
-  });
+function origFailed(p) {
+  if (!recoverPlayback(p, "this browser could not decode the original", false))
+    failPlay("Could not play this stream", "Choose another stream or try again.");
 }
+
 function teardown() {  // (the stream let go: hls.js destroyed, the element emptied)
   teardownN++;
   mediaFor = null;
@@ -10319,6 +11448,8 @@ function teardown() {  // (the stream let go: hls.js destroyed, the element empt
 }
 function stopPlayer() {  // (leaving: the place kept, the film paused at once; the stream let go once the page under has painted)
   savePos(true);
+  releasePlayback(playing);
+  teardown();
   playing = null;
   releaseLandscape();
   if (document.pictureInPictureElement === vid && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
@@ -10333,8 +11464,7 @@ function stopPlayer() {  // (leaving: the place kept, the film paused at once; t
   ["pAudio", "dAudio"].forEach((id) => byId(id).classList.add("hidden"));
   if ("mediaSession" in navigator) { try { navigator.mediaSession.metadata = null; } catch (e) {} }
   if (hls) { try { hls.stopLoad(); } catch (e) {} }  // (nothing more fetched from now)
-  const n = ++teardownN;
-  whenQuiet(() => { if (n === teardownN && !playing) teardown(); }, 700);  // (the rest once the page under has moved in and the finger rests)
+  ++teardownN; // Media and server work were released before painting navigation.  // (the rest once the page under has moved in and the finger rests)
 }
 function savePos(force) {  // (where it's at, every 20 s while it plays and at once on pause, on leaving, on hiding the page; Continue
   const p = playing;
@@ -10544,6 +11674,7 @@ function seekTo(t) {
   t = Math.max(0, Math.min(vid.duration - .25, t));
   if (Math.abs(t - vid.currentTime) < .05 && !vid.seeking) return;
   seekMine = true;
+  playbackSeek(playing, t);
   vid.currentTime = t;
 }
 function togglePlay() {
@@ -10573,7 +11704,7 @@ function hint(t) {  // (the reader may ready the piece at t before the player as
   if (i < 0 || now - hintAt < 334) return;
   hintAt = now;
   const m = /^(.*\/hls\/[^/]+\/)[^/?]+\.m3u8\?r=(\d+)/.exec(hls.levels[0].details.url || "");
-  if (m) fetch(m[1] + "h" + i + "?r=" + m[2]).catch(() => {});
+  if (m && playing.session && !playing.session.ended) playbackSeek(playing, t);
 }
 let jumpTo = 0, jumpT = null, jumpAt = -1e9;
 function jump(d) {  // (±10 s: the first seeks at once; more within 400 ms of a seek add up, applied 150 ms after the last)
@@ -11212,6 +12343,7 @@ vid.addEventListener("durationchange", () => { if (live()) { paintDur(); aimBar(
 vid.addEventListener("seeking", () => {
   if (!live()) return;
   const t = vid.currentTime, s = snap(t);
+  playbackSeek(playing, t);
   if (s !== t) { vid.currentTime = s; return; }  // (the nested 'seeking' does the rest)
   const mine = seekMine;
   seekMine = false;
@@ -11246,11 +12378,13 @@ vid.addEventListener("playing", () => {
   pl.classList.add("live");  // (the cover fades out, once a title)
   byId("pSnap").classList.add("hidden");
   retrying = false;
+  p.needsGesture = false; p.lastMovement = Date.now();
   if (nexting) { nexting = false; pl.classList.remove("nexting"); }
   settleUi();
   aimBar();
   if (!p.started) {
     p.started = true;
+    rememberPlayback(p);
     if (p.from > 0 && !p.why) showRestart();
     if (p.twinned) say("Playing the converted stream: " + p.twinned);
   }
@@ -11271,6 +12405,7 @@ vid.addEventListener("ratechange", () => { if (live()) aimBar(); });
 vid.addEventListener("progress", paintBuf);
 vid.addEventListener("timeupdate", () => {
   if (!live()) return;
+  if (Math.abs(vid.currentTime - playing.lastTime) > .1) { playing.lastTime = vid.currentTime; playing.lastMovement = Date.now(); }
   savePos(false);
   upNext();
   if (!scrubbing() && !pl.classList.contains("hide")) paintTimes(vid.currentTime);
@@ -11287,23 +12422,8 @@ vid.addEventListener("error", () => {  // (a file: once more from where it was, 
   const p = playing;
   if (!live() || hls || uiState === "error" || !vid.getAttribute("src")) return;
   if (/\/orig\.m3u8/.test(p.url)) { origFailed(p); return; }
-  if (p.apple && /\/file\//.test(p.url) && !(vid.error && vid.error.code === 2 && !p.reloads)) {  // (a file listed for Apple's player that it
-    const tok = p.url.split("/file/")[1].split("/")[0], why = markUnfit(p, "Safari couldn't play this file as it is", true);
-    play(p.url.split("/file/")[0] + "/hls/" + tok + "/index.m3u8", "converted (the original can't play here)", p.file, p.info, p.title, p.ep, "switch");
-    playing.twinned = why;
-    return;
-  }
-  if (vid.error && vid.error.code === 2 && !p.reloads) {
-    p.reloads = 1;
-    const t = vid.currentTime;
-    retrying = true;
-    setBusy("retry", "", true);
-    vid.src = p.url;
-    if (t > 1) vid.addEventListener("loadedmetadata", () => { if (playing === p) vid.currentTime = t; }, {once: true});
-    startPlay(p);
-    return;
-  }
-  if (!twin()) failPlay("Couldn't play this stream", (vid.error && vid.error.code === 4 ? "The browser couldn't open it." : "The stream broke off.") + " Try again, or pick another stream.");
+  if (!recoverPlayback(p, "this stream needs compatible playback", !/\/file\//.test(p.url)))
+    failPlay("Could not play this stream", "Choose another stream or try again.");
 });
 
 const scrolls = {};
@@ -11796,7 +12916,7 @@ route(false);
     if (activePlayback()) { reloadAvailable = true; hide(); return; }
     location.reload();
   });
-  navigator.serviceWorker.register("/sw.js?release=2026-11-13-frame-7", {updateViaCache: "none"}).then((reg) => {
+  navigator.serviceWorker.register("/sw.js?release=2026-11-13-frame-15", {updateViaCache: "none"}).then((reg) => {
     registration = reg;
     refresh();
     reg.addEventListener("updatefound", () => {
@@ -11809,7 +12929,7 @@ route(false);
 </body>
 </html>
 """
-WEB_FILES = {'apple-touch-icon.png': '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', 'icon-192.png': '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', 'icon-512-maskable.png': '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', 'icon-512.png': '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', 'manifest.webmanifest': 'ewogICJuYW1lIjogIkZyYW1lIiwKICAic2hvcnRfbmFtZSI6ICJGcmFtZSIsCiAgImRlc2NyaXB0aW9uIjogIllvdXIgZmlsbXMgYW5kIHNlcmllcywgYmVhdXRpZnVsbHkgaW4gb25lIHBsYWNlLiIsCiAgImlkIjogIi93YXRjaCIsCiAgInN0YXJ0X3VybCI6ICIvd2F0Y2giLAogICJzY29wZSI6ICIvIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAib3JpZW50YXRpb24iOiAiYW55IiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMGIwZDEwIiwKICAidGhlbWVfY29sb3IiOiAiIzBiMGQxMCIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogIi9wd2EvaWNvbi0xOTIucG5nP3Y9NCIsCiAgICAgICJzaXplcyI6ICIxOTJ4MTkyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIgogICAgfSwKICAgIHsKICAgICAgInNyYyI6ICIvcHdhL2ljb24tNTEyLnBuZz92PTQiLAogICAgICAic2l6ZXMiOiAiNTEyeDUxMiIsCiAgICAgICJ0eXBlIjogImltYWdlL3BuZyIKICAgIH0sCiAgICB7CiAgICAgICJzcmMiOiAiL3B3YS9pY29uLTUxMi1tYXNrYWJsZS5wbmc/dj00IiwKICAgICAgInNpemVzIjogIjUxMng1MTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciLAogICAgICAicHVycG9zZSI6ICJtYXNrYWJsZSIKICAgIH0KICBdLAogICJjYXRlZ29yaWVzIjogWwogICAgImVudGVydGFpbm1lbnQiCiAgXSwKICAibGFuZyI6ICJlbiIsCiAgInNob3J0Y3V0cyI6IFsKICAgIHsKICAgICAgIm5hbWUiOiAiU2VhcmNoIiwKICAgICAgInVybCI6ICIvd2F0Y2gjL3NlYXJjaCIKICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogIk15IExpYnJhcnkiLAogICAgICAidXJsIjogIi93YXRjaCMvbGlicmFyeSIKICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogIk1vdmllcyIsCiAgICAgICJ1cmwiOiAiL3dhdGNoIy9tb3ZpZXMiCiAgICB9CiAgXQp9Cg==', 'sw.js': 'Ly8gRnJhbWUga2VlcHMgaXRzIGludGVyZmFjZSBhdmFpbGFibGUgb2ZmbGluZS4gTWVkaWEsIHBsYXlsaXN0cywgQVBJIHJlc3BvbnNlcwovLyBhbmQgc2lnbmVkIHNvdXJjZSBVUkxzIGFsd2F5cyBnbyBkaXJlY3RseSB0byB0aGUgbmV0d29yay4KY29uc3QgVkVSU0lPTiA9ICIyMDI2LTExLTEzLWZyYW1lLTciOwovLyBLZWVwIHRoZSBvcmlnaW5hbCBjYWNoZSBsaW5lYWdlIHNvIGV4aXN0aW5nIGluc3RhbGxhdGlvbnMgbWlncmF0ZSBzYWZlbHkuCmNvbnN0IFBBR0VfQ0FDSEUgPSAiZmxlZXQtc2hlbGwtIiArIFZFUlNJT047CmNvbnN0IEFTU0VUX0NBQ0hFID0gImZsZWV0LWFzc2V0cy0iICsgVkVSU0lPTjsKY29uc3QgUEFHRSA9ICIvd2F0Y2giLCBBU1NFVF9MSU1JVCA9IDEyOwpjb25zdCBJQ09OUyA9IFsiL3B3YS9hcHBsZS10b3VjaC1pY29uLnBuZyIsICIvcHdhL2ljb24tMTkyLnBuZyIsICIvcHdhL2ljb24tNTEyLnBuZyIsICIvcHdhL2ljb24tNTEyLW1hc2thYmxlLnBuZyJdOwpjb25zdCBvd25zQ2FjaGUgPSAoa2V5KSA9PiBrZXkgPT09ICJmbGVldC0xIiB8fCBrZXkuc3RhcnRzV2l0aCgiZmxlZXQtc2hlbGwtIikgfHwga2V5LnN0YXJ0c1dpdGgoImZsZWV0LWFzc2V0cy0iKTsKY29uc3QgaXNBc3NldCA9ICh1cmwpID0+IHVybC5wYXRobmFtZSA9PT0gIi9tYW5pZmVzdC53ZWJtYW5pZmVzdCIgfHwgSUNPTlMuaW5jbHVkZXModXJsLnBhdGhuYW1lKSB8fAogIC9eXC9nd1wvY2RuXC5qc2RlbGl2clwubmV0XC9ucG1cL2hsc1wuanNAXGQrXC5cZCtcLlxkK1wvZGlzdFwvaGxzXC5taW5cLmpzJC8udGVzdCh1cmwucGF0aG5hbWUpOwoKYXN5bmMgZnVuY3Rpb24ga2VlcChjYWNoZU5hbWUsIGtleSwgcmVzcG9uc2UpIHsKICBpZiAoIXJlc3BvbnNlIHx8ICFyZXNwb25zZS5vayB8fCByZXNwb25zZS5zdGF0dXMgIT09IDIwMCB8fCByZXNwb25zZS50eXBlID09PSAib3BhcXVlIiB8fCByZXNwb25zZS5oZWFkZXJzLmhhcygiQ29udGVudC1SYW5nZSIpKSByZXR1cm47CiAgY29uc3QgY29weSA9IHJlc3BvbnNlLmNsb25lKCk7CiAgY29uc3QgY2FjaGUgPSBhd2FpdCBjYWNoZXMub3BlbihjYWNoZU5hbWUpOwogIGF3YWl0IGNhY2hlLnB1dChrZXksIGNvcHkpOwogIGlmIChjYWNoZU5hbWUgPT09IEFTU0VUX0NBQ0hFKSB7CiAgICBjb25zdCBrZXlzID0gYXdhaXQgY2FjaGUua2V5cygpOwogICAgYXdhaXQgUHJvbWlzZS5hbGwoa2V5cy5zbGljZSgwLCBNYXRoLm1heCgwLCBrZXlzLmxlbmd0aCAtIEFTU0VUX0xJTUlUKSkubWFwKChvbGQpID0+IGNhY2hlLmRlbGV0ZShvbGQpKSk7CiAgfQp9CnNlbGYuYWRkRXZlbnRMaXN0ZW5lcigiaW5zdGFsbCIsIChldmVudCkgPT4gewogIC8vIEEgbmV3IHdvcmtlciB3YWl0cyBmb3IgYW4gZXhwbGljaXQgdXBkYXRlIGFjdGlvbjsgaXQgbmV2ZXIgcmVsb2FkcyBwbGF5YmFjay4KICBldmVudC53YWl0VW50aWwoUHJvbWlzZS5hbGwoW1BBR0UsICIvbWFuaWZlc3Qud2VibWFuaWZlc3QiLCAuLi5JQ09OUy5tYXAoKHBhdGgpID0+IHBhdGggKyAiP3Y9NCIpXS5tYXAoYXN5bmMgKHBhdGgpID0+IHsKICAgIHRyeSB7CiAgICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2gocGF0aCwge2NhY2hlOiAicmVsb2FkIn0pOwogICAgICBhd2FpdCBrZWVwKHBhdGggPT09IFBBR0UgPyBQQUdFX0NBQ0hFIDogQVNTRVRfQ0FDSEUsIHBhdGgsIHJlc3BvbnNlKTsKICAgIH0gY2F0Y2ggKF8pIHsgLyogQW4gZXhpc3RpbmcgaW5zdGFsbGF0aW9uIHJlbWFpbnMgdXNhYmxlIGlmIG9uZSBmZXRjaCBmYWlscy4gKi8gfQogIH0pKSk7Cn0pOwpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoImFjdGl2YXRlIiwgKGV2ZW50KSA9PiB7CiAgZXZlbnQud2FpdFVudGlsKChhc3luYyAoKSA9PiB7CiAgICBjb25zdCBrZXlzID0gYXdhaXQgY2FjaGVzLmtleXMoKSwgY3VycmVudCA9IGF3YWl0IGNhY2hlcy5vcGVuKFBBR0VfQ0FDSEUpOwogICAgLy8gQSBmYWlsZWQgaW5zdGFsbC10aW1lIGZldGNoIG11c3Qgbm90IHRocm93IGF3YXkgdGhlIGxhc3QgdXNhYmxlIG9mZmxpbmUgc2hlbGwuCiAgICBpZiAoIWF3YWl0IGN1cnJlbnQubWF0Y2goUEFHRSkpIHsKICAgICAgZm9yIChjb25zdCBrZXkgb2Yga2V5cy5zbGljZSgpLnJldmVyc2UoKS5maWx0ZXIoKGtleSkgPT4ga2V5ICE9PSBQQUdFX0NBQ0hFICYmIChrZXkgPT09ICJmbGVldC0xIiB8fCBrZXkuc3RhcnRzV2l0aCgiZmxlZXQtc2hlbGwtIikpKSkgewogICAgICAgIGNvbnN0IHByZXZpb3VzID0gYXdhaXQgKGF3YWl0IGNhY2hlcy5vcGVuKGtleSkpLm1hdGNoKFBBR0UpOwogICAgICAgIGlmIChwcmV2aW91cykgeyBhd2FpdCBrZWVwKFBBR0VfQ0FDSEUsIFBBR0UsIHByZXZpb3VzKTsgYnJlYWs7IH0KICAgICAgfQogICAgfQogICAgYXdhaXQgUHJvbWlzZS5hbGwoa2V5cy5maWx0ZXIoKGtleSkgPT4gb3duc0NhY2hlKGtleSkgJiYga2V5ICE9PSBQQUdFX0NBQ0hFICYmIGtleSAhPT0gQVNTRVRfQ0FDSEUpLm1hcCgoa2V5KSA9PiBjYWNoZXMuZGVsZXRlKGtleSkpKTsKICAgIGF3YWl0IHNlbGYuY2xpZW50cy5jbGFpbSgpOwogIH0pKCkpOwp9KTsKc2VsZi5hZGRFdmVudExpc3RlbmVyKCJtZXNzYWdlIiwgKGV2ZW50KSA9PiB7CiAgaWYgKGV2ZW50LmRhdGEgJiYgZXZlbnQuZGF0YS50eXBlID09PSAiRkxFRVRfQUNUSVZBVEVfVVBEQVRFIikgZXZlbnQud2FpdFVudGlsKHNlbGYuc2tpcFdhaXRpbmcoKSk7Cn0pOwpjb25zdCBvZmZsaW5lUGFnZSA9ICgpID0+IG5ldyBSZXNwb25zZSgnPCFkb2N0eXBlIGh0bWw+PGh0bWwgbGFuZz0iZW4iPjxtZXRhIGNoYXJzZXQ9InV0Zi04Ij48bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoLGluaXRpYWwtc2NhbGU9MSI+PG1ldGEgbmFtZT0idGhlbWUtY29sb3IiIGNvbnRlbnQ9IiMwYjBkMTAiPjx0aXRsZT5GcmFtZSDCtyBPZmZsaW5lPC90aXRsZT48c3R5bGU+Ym9keXttYXJnaW46MDttaW4taGVpZ2h0OjEwMHZoO2Rpc3BsYXk6Z3JpZDtwbGFjZS1pdGVtczpjZW50ZXI7YmFja2dyb3VuZDojMGIwZDEwO2NvbG9yOiNmM2Y1Zjc7Zm9udDoxNnB4LzEuNiBzeXN0ZW0tdWksc2Fucy1zZXJpZn1tYWlue21heC13aWR0aDoyOHJlbTtwYWRkaW5nOjMycHh9cHtjb2xvcjojYjNiYmM1fWF7ZGlzcGxheTppbmxpbmUtYmxvY2s7bWFyZ2luLXRvcDoxNnB4O3BhZGRpbmc6MTJweCAyMHB4O2JvcmRlci1yYWRpdXM6MTJweDtiYWNrZ3JvdW5kOiNhNzliY2M7Y29sb3I6IzBiMGQxMDt0ZXh0LWRlY29yYXRpb246bm9uZTtmb250LXdlaWdodDo2NTB9YTpmb2N1cy12aXNpYmxle291dGxpbmU6MnB4IHNvbGlkICNiOGFjZDk7b3V0bGluZS1vZmZzZXQ6NHB4fTwvc3R5bGU+PG1haW4+PGgxPllvdeKAmXJlIG9mZmxpbmU8L2gxPjxwPlJlY29ubmVjdCB0byBicm93c2UgYW5kIHBsYXkuIFlvdXIgc2F2ZWQgbGlicmFyeSBhbmQgd2F0Y2ggcHJvZ3Jlc3Mgc3RheSBvbiB0aGlzIGRldmljZS48L3A+PGEgaHJlZj0iL3dhdGNoIj5UcnkgYWdhaW48L2E+PC9tYWluPjwvaHRtbD4nLCB7c3RhdHVzOiAyMDAsIGhlYWRlcnM6IHsiQ29udGVudC1UeXBlIjogInRleHQvaHRtbDsgY2hhcnNldD11dGYtOCIsICJDYWNoZS1Db250cm9sIjogIm5vLXN0b3JlIn19KTsKYXN5bmMgZnVuY3Rpb24gcGFnZVJlc3BvbnNlKGV2ZW50KSB7CiAgY29uc3QgY29udHJvbGxlciA9IG5ldyBBYm9ydENvbnRyb2xsZXIoKTsKICBjb25zdCB0aW1lciA9IHNldFRpbWVvdXQoKCkgPT4gY29udHJvbGxlci5hYm9ydCgpLCA1MDAwKTsKICB0cnkgewogICAgY29uc3QgcmVzcG9uc2UgPSBhd2FpdCBmZXRjaChldmVudC5yZXF1ZXN0LCB7Y2FjaGU6ICJuby1zdG9yZSIsIHNpZ25hbDogY29udHJvbGxlci5zaWduYWx9KTsKICAgIGlmIChyZXNwb25zZS5vaykgewogICAgICBldmVudC53YWl0VW50aWwoa2VlcChQQUdFX0NBQ0hFLCBQQUdFLCByZXNwb25zZSkuY2F0Y2goKCkgPT4ge30pKTsKICAgICAgcmV0dXJuIHJlc3BvbnNlOwogICAgfQogICAgY29uc3QgY2FjaGVkID0gYXdhaXQgKGF3YWl0IGNhY2hlcy5vcGVuKFBBR0VfQ0FDSEUpKS5tYXRjaChQQUdFKTsKICAgIHJldHVybiBjYWNoZWQgfHwgcmVzcG9uc2U7CiAgfSBjYXRjaCAoXykgewogICAgcmV0dXJuIGF3YWl0IChhd2FpdCBjYWNoZXMub3BlbihQQUdFX0NBQ0hFKSkubWF0Y2goUEFHRSkgfHwgb2ZmbGluZVBhZ2UoKTsKICB9IGZpbmFsbHkgeyBjbGVhclRpbWVvdXQodGltZXIpOyB9Cn0Kc2VsZi5hZGRFdmVudExpc3RlbmVyKCJmZXRjaCIsIChldmVudCkgPT4gewogIGNvbnN0IHVybCA9IG5ldyBVUkwoZXZlbnQucmVxdWVzdC51cmwpOwogIGlmICh1cmwub3JpZ2luICE9PSBzZWxmLmxvY2F0aW9uLm9yaWdpbiB8fCBldmVudC5yZXF1ZXN0Lm1ldGhvZCAhPT0gIkdFVCIgfHwgZXZlbnQucmVxdWVzdC5oZWFkZXJzLmhhcygiUmFuZ2UiKSkgcmV0dXJuOwogIGlmICh1cmwucGF0aG5hbWUgPT09IFBBR0UgfHwgdXJsLnBhdGhuYW1lID09PSBQQUdFICsgIi8iKSBldmVudC5yZXNwb25kV2l0aChwYWdlUmVzcG9uc2UoZXZlbnQpKTsKICBlbHNlIGlmIChpc0Fzc2V0KHVybCkpIGV2ZW50LnJlc3BvbmRXaXRoKChhc3luYyAoKSA9PiB7CiAgICBjb25zdCBjYWNoZWQgPSBhd2FpdCAoYXdhaXQgY2FjaGVzLm9wZW4oQVNTRVRfQ0FDSEUpKS5tYXRjaChldmVudC5yZXF1ZXN0KTsKICAgIGlmIChjYWNoZWQpIHJldHVybiBjYWNoZWQ7CiAgICBjb25zdCByZXNwb25zZSA9IGF3YWl0IGZldGNoKGV2ZW50LnJlcXVlc3QpOwogICAgZXZlbnQud2FpdFVudGlsKGtlZXAoQVNTRVRfQ0FDSEUsIGV2ZW50LnJlcXVlc3QsIHJlc3BvbnNlKS5jYXRjaCgoKSA9PiB7fSkpOwogICAgcmV0dXJuIHJlc3BvbnNlOwogIH0pKCkpOwp9KTsK'}
+WEB_FILES = {'apple-touch-icon.png': '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', 'icon-192.png': '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', 'icon-512-maskable.png': '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', 'icon-512.png': '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', 'manifest.webmanifest': 'ewogICJuYW1lIjogIkZyYW1lIiwKICAic2hvcnRfbmFtZSI6ICJGcmFtZSIsCiAgImRlc2NyaXB0aW9uIjogIllvdXIgZmlsbXMgYW5kIHNlcmllcywgYmVhdXRpZnVsbHkgaW4gb25lIHBsYWNlLiIsCiAgImlkIjogIi93YXRjaCIsCiAgInN0YXJ0X3VybCI6ICIvd2F0Y2giLAogICJzY29wZSI6ICIvIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAib3JpZW50YXRpb24iOiAiYW55IiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMGIwZDEwIiwKICAidGhlbWVfY29sb3IiOiAiIzBiMGQxMCIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogIi9wd2EvaWNvbi0xOTIucG5nP3Y9NCIsCiAgICAgICJzaXplcyI6ICIxOTJ4MTkyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIgogICAgfSwKICAgIHsKICAgICAgInNyYyI6ICIvcHdhL2ljb24tNTEyLnBuZz92PTQiLAogICAgICAic2l6ZXMiOiAiNTEyeDUxMiIsCiAgICAgICJ0eXBlIjogImltYWdlL3BuZyIKICAgIH0sCiAgICB7CiAgICAgICJzcmMiOiAiL3B3YS9pY29uLTUxMi1tYXNrYWJsZS5wbmc/dj00IiwKICAgICAgInNpemVzIjogIjUxMng1MTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciLAogICAgICAicHVycG9zZSI6ICJtYXNrYWJsZSIKICAgIH0KICBdLAogICJjYXRlZ29yaWVzIjogWwogICAgImVudGVydGFpbm1lbnQiCiAgXSwKICAibGFuZyI6ICJlbiIsCiAgInNob3J0Y3V0cyI6IFsKICAgIHsKICAgICAgIm5hbWUiOiAiU2VhcmNoIiwKICAgICAgInVybCI6ICIvd2F0Y2gjL3NlYXJjaCIKICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogIk15IExpYnJhcnkiLAogICAgICAidXJsIjogIi93YXRjaCMvbGlicmFyeSIKICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogIk1vdmllcyIsCiAgICAgICJ1cmwiOiAiL3dhdGNoIy9tb3ZpZXMiCiAgICB9CiAgXQp9Cg==', 'sw.js': 'Ly8gRnJhbWUga2VlcHMgaXRzIGludGVyZmFjZSBhdmFpbGFibGUgb2ZmbGluZS4gTWVkaWEsIHBsYXlsaXN0cywgQVBJIHJlc3BvbnNlcwovLyBhbmQgc2lnbmVkIHNvdXJjZSBVUkxzIGFsd2F5cyBnbyBkaXJlY3RseSB0byB0aGUgbmV0d29yay4KY29uc3QgVkVSU0lPTiA9ICIyMDI2LTExLTEzLWZyYW1lLTE1IjsKLy8gS2VlcCB0aGUgb3JpZ2luYWwgY2FjaGUgbGluZWFnZSBzbyBleGlzdGluZyBpbnN0YWxsYXRpb25zIG1pZ3JhdGUgc2FmZWx5Lgpjb25zdCBQQUdFX0NBQ0hFID0gImZsZWV0LXNoZWxsLSIgKyBWRVJTSU9OOwpjb25zdCBBU1NFVF9DQUNIRSA9ICJmbGVldC1hc3NldHMtIiArIFZFUlNJT047CmNvbnN0IFBBR0UgPSAiL3dhdGNoIiwgQVNTRVRfTElNSVQgPSAxMjsKY29uc3QgSUNPTlMgPSBbIi9wd2EvYXBwbGUtdG91Y2gtaWNvbi5wbmciLCAiL3B3YS9pY29uLTE5Mi5wbmciLCAiL3B3YS9pY29uLTUxMi5wbmciLCAiL3B3YS9pY29uLTUxMi1tYXNrYWJsZS5wbmciXTsKY29uc3Qgb3duc0NhY2hlID0gKGtleSkgPT4ga2V5ID09PSAiZmxlZXQtMSIgfHwga2V5LnN0YXJ0c1dpdGgoImZsZWV0LXNoZWxsLSIpIHx8IGtleS5zdGFydHNXaXRoKCJmbGVldC1hc3NldHMtIik7CmNvbnN0IGlzQXNzZXQgPSAodXJsKSA9PiB1cmwucGF0aG5hbWUgPT09ICIvbWFuaWZlc3Qud2VibWFuaWZlc3QiIHx8IElDT05TLmluY2x1ZGVzKHVybC5wYXRobmFtZSkgfHwKICAvXlwvZ3dcL2NkblwuanNkZWxpdnJcLm5ldFwvbnBtXC9obHNcLmpzQFxkK1wuXGQrXC5cZCtcL2Rpc3RcL2hsc1wubWluXC5qcyQvLnRlc3QodXJsLnBhdGhuYW1lKTsKCmFzeW5jIGZ1bmN0aW9uIGtlZXAoY2FjaGVOYW1lLCBrZXksIHJlc3BvbnNlKSB7CiAgaWYgKCFyZXNwb25zZSB8fCAhcmVzcG9uc2Uub2sgfHwgcmVzcG9uc2Uuc3RhdHVzICE9PSAyMDAgfHwgcmVzcG9uc2UudHlwZSA9PT0gIm9wYXF1ZSIgfHwgcmVzcG9uc2UuaGVhZGVycy5oYXMoIkNvbnRlbnQtUmFuZ2UiKSkgcmV0dXJuOwogIGNvbnN0IGNvcHkgPSByZXNwb25zZS5jbG9uZSgpOwogIGNvbnN0IGNhY2hlID0gYXdhaXQgY2FjaGVzLm9wZW4oY2FjaGVOYW1lKTsKICBhd2FpdCBjYWNoZS5wdXQoa2V5LCBjb3B5KTsKICBpZiAoY2FjaGVOYW1lID09PSBBU1NFVF9DQUNIRSkgewogICAgY29uc3Qga2V5cyA9IGF3YWl0IGNhY2hlLmtleXMoKTsKICAgIGF3YWl0IFByb21pc2UuYWxsKGtleXMuc2xpY2UoMCwgTWF0aC5tYXgoMCwga2V5cy5sZW5ndGggLSBBU1NFVF9MSU1JVCkpLm1hcCgob2xkKSA9PiBjYWNoZS5kZWxldGUob2xkKSkpOwogIH0KfQpzZWxmLmFkZEV2ZW50TGlzdGVuZXIoImluc3RhbGwiLCAoZXZlbnQpID0+IHsKICAvLyBBIG5ldyB3b3JrZXIgd2FpdHMgZm9yIGFuIGV4cGxpY2l0IHVwZGF0ZSBhY3Rpb247IGl0IG5ldmVyIHJlbG9hZHMgcGxheWJhY2suCiAgZXZlbnQud2FpdFVudGlsKFByb21pc2UuYWxsKFtQQUdFLCAiL21hbmlmZXN0LndlYm1hbmlmZXN0IiwgLi4uSUNPTlMubWFwKChwYXRoKSA9PiBwYXRoICsgIj92PTQiKV0ubWFwKGFzeW5jIChwYXRoKSA9PiB7CiAgICB0cnkgewogICAgICBjb25zdCByZXNwb25zZSA9IGF3YWl0IGZldGNoKHBhdGgsIHtjYWNoZTogInJlbG9hZCJ9KTsKICAgICAgYXdhaXQga2VlcChwYXRoID09PSBQQUdFID8gUEFHRV9DQUNIRSA6IEFTU0VUX0NBQ0hFLCBwYXRoLCByZXNwb25zZSk7CiAgICB9IGNhdGNoIChfKSB7IC8qIEFuIGV4aXN0aW5nIGluc3RhbGxhdGlvbiByZW1haW5zIHVzYWJsZSBpZiBvbmUgZmV0Y2ggZmFpbHMuICovIH0KICB9KSkpOwp9KTsKc2VsZi5hZGRFdmVudExpc3RlbmVyKCJhY3RpdmF0ZSIsIChldmVudCkgPT4gewogIGV2ZW50LndhaXRVbnRpbCgoYXN5bmMgKCkgPT4gewogICAgY29uc3Qga2V5cyA9IGF3YWl0IGNhY2hlcy5rZXlzKCksIGN1cnJlbnQgPSBhd2FpdCBjYWNoZXMub3BlbihQQUdFX0NBQ0hFKTsKICAgIC8vIEEgZmFpbGVkIGluc3RhbGwtdGltZSBmZXRjaCBtdXN0IG5vdCB0aHJvdyBhd2F5IHRoZSBsYXN0IHVzYWJsZSBvZmZsaW5lIHNoZWxsLgogICAgaWYgKCFhd2FpdCBjdXJyZW50Lm1hdGNoKFBBR0UpKSB7CiAgICAgIGZvciAoY29uc3Qga2V5IG9mIGtleXMuc2xpY2UoKS5yZXZlcnNlKCkuZmlsdGVyKChrZXkpID0+IGtleSAhPT0gUEFHRV9DQUNIRSAmJiAoa2V5ID09PSAiZmxlZXQtMSIgfHwga2V5LnN0YXJ0c1dpdGgoImZsZWV0LXNoZWxsLSIpKSkpIHsKICAgICAgICBjb25zdCBwcmV2aW91cyA9IGF3YWl0IChhd2FpdCBjYWNoZXMub3BlbihrZXkpKS5tYXRjaChQQUdFKTsKICAgICAgICBpZiAocHJldmlvdXMpIHsgYXdhaXQga2VlcChQQUdFX0NBQ0hFLCBQQUdFLCBwcmV2aW91cyk7IGJyZWFrOyB9CiAgICAgIH0KICAgIH0KICAgIGF3YWl0IFByb21pc2UuYWxsKGtleXMuZmlsdGVyKChrZXkpID0+IG93bnNDYWNoZShrZXkpICYmIGtleSAhPT0gUEFHRV9DQUNIRSAmJiBrZXkgIT09IEFTU0VUX0NBQ0hFKS5tYXAoKGtleSkgPT4gY2FjaGVzLmRlbGV0ZShrZXkpKSk7CiAgICBhd2FpdCBzZWxmLmNsaWVudHMuY2xhaW0oKTsKICB9KSgpKTsKfSk7CnNlbGYuYWRkRXZlbnRMaXN0ZW5lcigibWVzc2FnZSIsIChldmVudCkgPT4gewogIGlmIChldmVudC5kYXRhICYmIGV2ZW50LmRhdGEudHlwZSA9PT0gIkZMRUVUX0FDVElWQVRFX1VQREFURSIpIGV2ZW50LndhaXRVbnRpbChzZWxmLnNraXBXYWl0aW5nKCkpOwp9KTsKY29uc3Qgb2ZmbGluZVBhZ2UgPSAoKSA9PiBuZXcgUmVzcG9uc2UoJzwhZG9jdHlwZSBodG1sPjxodG1sIGxhbmc9ImVuIj48bWV0YSBjaGFyc2V0PSJ1dGYtOCI+PG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCxpbml0aWFsLXNjYWxlPTEiPjxtZXRhIG5hbWU9InRoZW1lLWNvbG9yIiBjb250ZW50PSIjMGIwZDEwIj48dGl0bGU+RnJhbWUgwrcgT2ZmbGluZTwvdGl0bGU+PHN0eWxlPmJvZHl7bWFyZ2luOjA7bWluLWhlaWdodDoxMDB2aDtkaXNwbGF5OmdyaWQ7cGxhY2UtaXRlbXM6Y2VudGVyO2JhY2tncm91bmQ6IzBiMGQxMDtjb2xvcjojZjNmNWY3O2ZvbnQ6MTZweC8xLjYgc3lzdGVtLXVpLHNhbnMtc2VyaWZ9bWFpbnttYXgtd2lkdGg6MjhyZW07cGFkZGluZzozMnB4fXB7Y29sb3I6I2IzYmJjNX1he2Rpc3BsYXk6aW5saW5lLWJsb2NrO21hcmdpbi10b3A6MTZweDtwYWRkaW5nOjEycHggMjBweDtib3JkZXItcmFkaXVzOjEycHg7YmFja2dyb3VuZDojYTc5YmNjO2NvbG9yOiMwYjBkMTA7dGV4dC1kZWNvcmF0aW9uOm5vbmU7Zm9udC13ZWlnaHQ6NjUwfWE6Zm9jdXMtdmlzaWJsZXtvdXRsaW5lOjJweCBzb2xpZCAjYjhhY2Q5O291dGxpbmUtb2Zmc2V0OjRweH08L3N0eWxlPjxtYWluPjxoMT5Zb3XigJlyZSBvZmZsaW5lPC9oMT48cD5SZWNvbm5lY3QgdG8gYnJvd3NlIGFuZCBwbGF5LiBZb3VyIHNhdmVkIGxpYnJhcnkgYW5kIHdhdGNoIHByb2dyZXNzIHN0YXkgb24gdGhpcyBkZXZpY2UuPC9wPjxhIGhyZWY9Ii93YXRjaCI+VHJ5IGFnYWluPC9hPjwvbWFpbj48L2h0bWw+Jywge3N0YXR1czogMjAwLCBoZWFkZXJzOiB7IkNvbnRlbnQtVHlwZSI6ICJ0ZXh0L2h0bWw7IGNoYXJzZXQ9dXRmLTgiLCAiQ2FjaGUtQ29udHJvbCI6ICJuby1zdG9yZSJ9fSk7CmFzeW5jIGZ1bmN0aW9uIHBhZ2VSZXNwb25zZShldmVudCkgewogIGNvbnN0IGNvbnRyb2xsZXIgPSBuZXcgQWJvcnRDb250cm9sbGVyKCk7CiAgY29uc3QgdGltZXIgPSBzZXRUaW1lb3V0KCgpID0+IGNvbnRyb2xsZXIuYWJvcnQoKSwgNTAwMCk7CiAgdHJ5IHsKICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2goZXZlbnQucmVxdWVzdCwge2NhY2hlOiAibm8tc3RvcmUiLCBzaWduYWw6IGNvbnRyb2xsZXIuc2lnbmFsfSk7CiAgICBpZiAocmVzcG9uc2Uub2spIHsKICAgICAgZXZlbnQud2FpdFVudGlsKGtlZXAoUEFHRV9DQUNIRSwgUEFHRSwgcmVzcG9uc2UpLmNhdGNoKCgpID0+IHt9KSk7CiAgICAgIHJldHVybiByZXNwb25zZTsKICAgIH0KICAgIGNvbnN0IGNhY2hlZCA9IGF3YWl0IChhd2FpdCBjYWNoZXMub3BlbihQQUdFX0NBQ0hFKSkubWF0Y2goUEFHRSk7CiAgICByZXR1cm4gY2FjaGVkIHx8IHJlc3BvbnNlOwogIH0gY2F0Y2ggKF8pIHsKICAgIHJldHVybiBhd2FpdCAoYXdhaXQgY2FjaGVzLm9wZW4oUEFHRV9DQUNIRSkpLm1hdGNoKFBBR0UpIHx8IG9mZmxpbmVQYWdlKCk7CiAgfSBmaW5hbGx5IHsgY2xlYXJUaW1lb3V0KHRpbWVyKTsgfQp9CnNlbGYuYWRkRXZlbnRMaXN0ZW5lcigiZmV0Y2giLCAoZXZlbnQpID0+IHsKICBjb25zdCB1cmwgPSBuZXcgVVJMKGV2ZW50LnJlcXVlc3QudXJsKTsKICBpZiAodXJsLm9yaWdpbiAhPT0gc2VsZi5sb2NhdGlvbi5vcmlnaW4gfHwgZXZlbnQucmVxdWVzdC5tZXRob2QgIT09ICJHRVQiIHx8IGV2ZW50LnJlcXVlc3QuaGVhZGVycy5oYXMoIlJhbmdlIikpIHJldHVybjsKICBpZiAodXJsLnBhdGhuYW1lID09PSBQQUdFIHx8IHVybC5wYXRobmFtZSA9PT0gUEFHRSArICIvIikgZXZlbnQucmVzcG9uZFdpdGgocGFnZVJlc3BvbnNlKGV2ZW50KSk7CiAgZWxzZSBpZiAoaXNBc3NldCh1cmwpKSBldmVudC5yZXNwb25kV2l0aCgoYXN5bmMgKCkgPT4gewogICAgY29uc3QgY2FjaGVkID0gYXdhaXQgKGF3YWl0IGNhY2hlcy5vcGVuKEFTU0VUX0NBQ0hFKSkubWF0Y2goZXZlbnQucmVxdWVzdCk7CiAgICBpZiAoY2FjaGVkKSByZXR1cm4gY2FjaGVkOwogICAgY29uc3QgcmVzcG9uc2UgPSBhd2FpdCBmZXRjaChldmVudC5yZXF1ZXN0KTsKICAgIGV2ZW50LndhaXRVbnRpbChrZWVwKEFTU0VUX0NBQ0hFLCBldmVudC5yZXF1ZXN0LCByZXNwb25zZSkuY2F0Y2goKCkgPT4ge30pKTsKICAgIHJldHVybiByZXNwb25zZTsKICB9KSgpKTsKfSk7Cg=='}
 FILE_TYPES = {"mkv": "video/x-matroska", "mp4": "video/mp4", "m4v": "video/x-m4v", "webm": "video/webm", "avi": "video/x-msvideo", "ts": "video/mp2t", "m2ts": "video/mp2t"}
 
 
@@ -11831,7 +12951,7 @@ def watch_page():
         with open(os.path.join(here, name), encoding="utf-8") as fh:
             return fh.read()
     body = part("body.html").replace("<!-- TOR_PLAYER -->", part("player.html"))
-    scripts = "".join(part(name) for name in ("core.js", "versions.js", "player.js", "pwa/client.js"))
+    scripts = "".join(part(name) for name in ("core.js", "versions.js", "session.js", "player.js", "pwa/client.js"))
     return part("head.html") + body + "<script>" + scripts + "</script>\n</body>\n</html>\n"
 
 
@@ -11843,7 +12963,7 @@ def main():
         if not os.path.exists(f"{CACHE}/{name}/{HAVE}"):
             shutil.rmtree(f"{CACHE}/{name}", ignore_errors=True)
     log(f"{APP} copy {REPLICA}: tor.py {CODE}, page on :{PAGE_PORT}, helper on :{HELPER_PORT}, {CACHE_BYTES / 2**30:.0f} GB of RAM for chunks")
-    for target in (scan_copies, keep_loop, heartbeat_loop, helper_loop, front_loop, torrserver_loop, trackers_loop) + (facts_worker,) * FACTS_WORKERS:
+    for target in (scan_copies, keep_loop, heartbeat_loop, helper_loop, front_loop, torrserver_loop, trackers_loop, playback_loop) + (facts_worker,) * FACTS_WORKERS:
         threading.Thread(target=target, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PAGE_PORT), Handler)
     srv.daemon_threads = True

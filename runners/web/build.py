@@ -5,10 +5,11 @@ import ast
 import base64
 import hashlib
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SCRIPT_PARTS = ('core.js', 'versions.js', 'player.js', 'pwa/client.js')
+SCRIPT_PARTS = ('core.js', 'versions.js', 'session.js', 'player.js', 'pwa/client.js')
 ASSETS = ('apple-touch-icon.png', 'icon-192.png', 'icon-512-maskable.png',
           'icon-512.png', 'manifest.webmanifest', 'sw.js')
 
@@ -28,9 +29,25 @@ def assets():
             for name in ASSETS}
 
 
+def health_page():
+    return ((ROOT / 'health.html').read_text()
+            .replace('<!-- HEALTH_STYLE -->', '<style>' + (ROOT / 'health.css').read_text() + '</style>')
+            .replace('<!-- HEALTH_SCRIPT -->', '<script>' + (ROOT / 'health.js').read_text() + '</script>'))
+
+
 def bundle(source):
+    lifecycle = (ROOT.parent / 'playback_lifecycle.py').read_text()
+    source, count = re.subn(r'(?s)# BEGIN PLAYBACK LIFECYCLE\n.*?# END PLAYBACK LIFECYCLE',
+                            lambda _: '# BEGIN PLAYBACK LIFECYCLE\n' + lifecycle + '# END PLAYBACK LIFECYCLE', source)
+    if count != 1:
+        raise ValueError('Expected one playback lifecycle block')
+    health = (ROOT.parent / 'health_dashboard.py').read_text()
+    source, count = re.subn(r'(?s)# BEGIN HEALTH DASHBOARD\n.*?# END HEALTH DASHBOARD',
+                            lambda _: '# BEGIN HEALTH DASHBOARD\n' + health + '# END HEALTH DASHBOARD', source)
+    if count != 1:
+        raise ValueError('Expected one health dashboard block')
     tree = ast.parse(source)
-    values = {'WATCH_PAGE': page(), 'WEB_FILES': assets()}
+    values = {'WATCH_PAGE': page(), 'WEB_FILES': assets(), 'HEALTH_PAGE': health_page()}
     lines = source.splitlines(keepends=True)
     replacements = []
     for node in tree.body:
@@ -40,7 +57,7 @@ def bundle(source):
         if name not in values:
             continue
         value = values.pop(name)
-        literal = (f'r"""{value}"""' if name == 'WATCH_PAGE' and '"""' not in value
+        literal = (f'r"""{value}"""' if name in ('WATCH_PAGE', 'HEALTH_PAGE') and '"""' not in value
                    else repr(value))
         replacements.append((node.lineno - 1, node.end_lineno, name + ' = ' + literal + '\n'))
     if values:

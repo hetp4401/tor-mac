@@ -32,7 +32,7 @@ class WebBundleTests(unittest.TestCase):
             tree = ast.parse(value)
             tree.body = [node for node in tree.body if not (
                 isinstance(node, ast.Assign) and len(node.targets) == 1
-                and getattr(node.targets[0], 'id', '') in ('WATCH_PAGE', 'WEB_FILES'))]
+                and getattr(node.targets[0], 'id', '') in ('WATCH_PAGE', 'WEB_FILES', 'HEALTH_PAGE'))]
             return ast.dump(tree, include_attributes=False)
         self.assertEqual(backend(original), backend(result))
 
@@ -40,9 +40,10 @@ class WebBundleTests(unittest.TestCase):
         result = ast.parse(build.bundle((ROOT / 'runners/tor.py').read_text()))
         embedded = {node.targets[0].id: ast.literal_eval(node.value) for node in result.body
                     if isinstance(node, ast.Assign) and len(node.targets) == 1
-                    and getattr(node.targets[0], 'id', '') in ('WATCH_PAGE', 'WEB_FILES')}
+                    and getattr(node.targets[0], 'id', '') in ('WATCH_PAGE', 'WEB_FILES', 'HEALTH_PAGE')}
         self.assertEqual(embedded['WATCH_PAGE'], build.page())
         self.assertEqual(embedded['WEB_FILES'], build.assets())
+        self.assertEqual(embedded['HEALTH_PAGE'], build.health_page())
         self.assertNotIn('<!-- TOR_PLAYER -->', embedded['WATCH_PAGE'])
         self.assertEqual(embedded['WATCH_PAGE'].count('<video '), 1)
 

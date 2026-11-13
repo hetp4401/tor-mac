@@ -1,0 +1,289 @@
+{
+  "feature": "Frame health time-series charts and per-core Mac CPU telemetry",
+  "code": "29399b3019c3",
+  "deployed": true,
+  "previous_version": 12,
+  "paths": [
+    "/health",
+    "/api/health"
+  ],
+  "capabilities": {
+    "macs": [
+      "availability and conversion capacity",
+      "CPU total and individual logical cores",
+      "RAM usage and capacity",
+      "shared disk utilization, available space, disk read/write rates",
+      "network receive/send rates, errors and dropped packets",
+      "GPU memory in use and allocated memory",
+      "GPU total/renderer/tiler counters when the driver exposes them",
+      "completed, failed, canceled, recorded stuck jobs and conversion median"
+    ],
+    "hosts": [
+      "current Frame replica hosts only",
+      "availability and sample age",
+      "CPU and memory",
+      "disk capacity and I/O",
+      "network I/O",
+      "one-hour host CPU/memory trends",
+      "replica workload CPU cores, memory, network and disk I/O"
+    ],
+    "streaming": [
+      "active leases by playback mode",
+      "queued reads/uploads",
+      "running media jobs",
+      "server segment preparation median/p95 with sample count, last five minutes",
+      "source fetch throughput and active source backoffs",
+      "media cache"
+    ],
+    "interface": [
+      "search",
+      "attention filter",
+      "refresh",
+      "pause updates",
+      "responsive layout",
+      "stale and missing data states",
+      "CPU / GPU / RAM / disk / network / conversion time-series tabs",
+      "5-minute, 15-minute, one-hour windows",
+      "per-series legends and missing-data gaps"
+    ]
+  },
+  "monitoring": {
+    "minimum_upstream_poll_seconds": 15,
+    "maximum_concurrent_reads": 5,
+    "upstream_timeout_seconds": 4,
+    "mac_history_limit": 240,
+    "starts_media_work": false,
+    "hidden_page_polling": false,
+    "mode": "read-only, demand-driven; shared refresh across visitors",
+    "mac_collector_interval_seconds": 5,
+    "mac_collector_request_behavior": "Health requests copy the last sample; the background collector never runs on media/health request threads."
+  },
+  "limitations": [
+    "The hosted AppleParavirtGPU driver exposes memory counters but no GPU utilization, renderer, tiler, or per-GPU-core utilization counters. GPU memory charts work; absent utilization is labeled unavailable.",
+    "CPU per-core charts are available on the Mac workers. The Runners host feed supplies aggregate CPU only.",
+    "Mac history is bounded, in-memory, and observed while the dashboard is viewed; it resets on a Frame restart. Host CPU/RAM/network/disk I/O history comes from Runners.",
+    "Streaming counters/timings describe the serving Frame replica. Segment preparation is not browser first-frame or seek latency."
+  ],
+  "verification": {
+    "backend_tests": 21,
+    "collector_tests": 6,
+    "dashboard_and_pwa_tests": 26,
+    "worker_http_and_cancellation_tests": 2,
+    "bundle_tests": 3,
+    "native": "verification/health-simulator-result.json",
+    "local_mac_worker": "verification/host-metrics-local-result.json",
+    "live": "verification/health-live-result.json",
+    "scope_regressions": "Unrelated apps, former hosts, moves, missing hosts, old runs and same-host multiple replicas covered.",
+    "native_revision_note": "Exact deployed code 29399b3019c3 passed native iPhone layout, all six metric tabs, range controls, search/filter, host/Mac details and CPU-core series checks.",
+    "apfs_capacity": "Disk utilization accounts for occupied space across APFS shared volumes, not just the root volume.",
+    "gpu_and_host_collector_tests": 10,
+    "local_gpu": "verification/gpu-local-result.json",
+    "live_mac_resources": "verification/gpu-live-result.json"
+  },
+  "version": 13,
+  "url": "https://frame.billybishop4-workers.xyz/health",
+  "live_verification": "verification/health-live-result.json",
+  "checked_at": 1794606906.838801,
+  "service_worker_release": "2026-11-13-frame-15",
+  "live_summary": {
+    "frame_host_ids": [
+      "27"
+    ],
+    "unrelated_hosts_excluded": true,
+    "macs": [
+      {
+        "id": "frame-mac-1",
+        "revision": "a9f3f191c443",
+        "state": "healthy",
+        "cpu_percent": 4.5,
+        "cpu_per_core": [
+          5.3,
+          5.2,
+          2.9
+        ],
+        "memory_percent": 57.8,
+        "gpu_memory_used": 31771648,
+        "gpu_memory_allocated": 29442048,
+        "gpu_percent": null,
+        "gpu_name": "AppleParavirtGPU",
+        "disk_percent": 85.8,
+        "disk_read": 0.0,
+        "disk_write": 37371.6,
+        "network_rx": 596.36,
+        "network_tx": 596.36,
+        "resource_stale": false,
+        "history_samples": 7,
+        "last_history_row": [
+          1794606904.315482,
+          0,
+          179,
+          null,
+          4.5,
+          57.8,
+          596.36,
+          596.36,
+          null,
+          4347379712,
+          7516192768,
+          85.8,
+          48663191552,
+          0.0,
+          37371.6,
+          31771648,
+          29442048,
+          null,
+          null,
+          [
+            5.3,
+            5.2,
+            2.9
+          ]
+        ]
+      },
+      {
+        "id": "frame-mac-2",
+        "revision": "a9f3f191c443",
+        "state": "healthy",
+        "cpu_percent": 12.5,
+        "cpu_per_core": [
+          14.5,
+          12.2,
+          10.8
+        ],
+        "memory_percent": 58.0,
+        "gpu_memory_used": 30788608,
+        "gpu_memory_allocated": 30507008,
+        "gpu_percent": null,
+        "gpu_name": "AppleParavirtGPU",
+        "disk_percent": 85.8,
+        "disk_read": 2373992.32,
+        "disk_write": 770964.66,
+        "network_rx": 3818.65,
+        "network_tx": 1406.87,
+        "resource_stale": false,
+        "history_samples": 7,
+        "last_history_row": [
+          1794606904.3298342,
+          0,
+          193,
+          null,
+          12.5,
+          58.0,
+          3818.65,
+          1406.87,
+          null,
+          4359553024,
+          7516192768,
+          85.8,
+          48664350720,
+          2373992.32,
+          770964.66,
+          30788608,
+          30507008,
+          null,
+          null,
+          [
+            14.5,
+            12.2,
+            10.8
+          ]
+        ]
+      },
+      {
+        "id": "frame-mac-3",
+        "revision": "4aecc572e594",
+        "state": "healthy",
+        "cpu_percent": 4.4,
+        "cpu_per_core": [
+          4.7,
+          5.1,
+          3.3
+        ],
+        "memory_percent": 57.8,
+        "gpu_memory_used": 32017408.0,
+        "gpu_memory_allocated": 30916608.0,
+        "gpu_percent": null,
+        "gpu_name": "AppleParavirtGPU",
+        "disk_percent": 85.9,
+        "disk_read": 0.0,
+        "disk_write": 803.3,
+        "network_rx": 803.3,
+        "network_tx": 1405.78,
+        "resource_stale": false,
+        "history_samples": 7,
+        "last_history_row": [
+          1794606904.3263943,
+          0,
+          189,
+          null,
+          4.4,
+          57.8,
+          803.3,
+          1405.78,
+          null,
+          4346789888,
+          7516192768,
+          85.9,
+          48484732928,
+          0.0,
+          803.3,
+          32017408.0,
+          30916608.0,
+          null,
+          null,
+          [
+            4.7,
+            5.1,
+            3.3
+          ]
+        ]
+      }
+    ],
+    "service": {
+      "replica": 1,
+      "code": "29399b3019c3",
+      "sessions": 0,
+      "modes": {},
+      "media_processes": 0,
+      "cpu_jobs": 0,
+      "mac_jobs": 0,
+      "reads": 0,
+      "queued": 0,
+      "cache_bytes": 0,
+      "lookahead_pieces": 12,
+      "segment_samples": 0,
+      "segment_p50_ms": null,
+      "segment_p95_ms": null,
+      "source_fetch_mbps": null,
+      "paused_sources": 0
+    }
+  },
+  "scope": {
+    "machines": "Only current Frame replica placements; follows moves automatically",
+    "macs": "Configured Frame conversion workers"
+  },
+  "mac_collector_deployed": true,
+  "mac_collector_publication": {
+    "commit": "a9f3f191c4430b1b6debc7bb907b2bc84208ed84",
+    "url": "https://github.com/hetp4401/tor-mac/commit/a9f3f191c4430b1b6debc7bb907b2bc84208ed84",
+    "status": "All three Macs reporting hardware metrics; Mac 3 uses the compatible initial GPU collector and updates to the current diagnostic build on its normal handover."
+  },
+  "worker_revisions": {
+    "1": "a9f3f191c4430b1b6debc7bb907b2bc84208ed84",
+    "2": "a9f3f191c4430b1b6debc7bb907b2bc84208ed84",
+    "3": "4aecc572e594010604fc30cf196ddf2a42c2e0f6"
+  },
+  "gpu_counter_availability": {
+    "driver": "AppleParavirtGPU",
+    "memory": true,
+    "utilization": false,
+    "per_core": false,
+    "counter_names": [
+      "Alloc system memory",
+      "In use system memory",
+      "In use system memory (driver)",
+      "lastRecoveryTime",
+      "recoveryCount"
+    ]
+  }
+}

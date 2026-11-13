@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0d18">
+<title>Frame health</title>
+<!-- HEALTH_STYLE -->
+</head>
+<body>
+<a class="skip" href="#main">Skip to health metrics</a>
+<header class="topbar"><a class="brand" href="/watch"><span class="mark" aria-hidden="true">▶</span>Frame<span class="divider">/</span><span class="muted">Health</span></a><a class="back" href="/watch">Back to watching <span aria-hidden="true">↗</span></a></header>
+<main id="main">
+  <div class="page-heading"><div><p class="eyebrow">YOUR STREAMING INFRASTRUCTURE</p><h1>Frame health<span class="title-dot" aria-hidden="true"></span></h1><p class="subtitle">Your Mac workers and the machines running Frame replicas.</p></div><div class="controls"><button id="pause" type="button" aria-pressed="false">Pause updates</button><button id="refresh" type="button" class="primary">Refresh <span aria-hidden="true">↻</span></button></div></div>
+  <div class="update-line"><span id="freshness" role="status">Connecting to your machines…</span><span>Automatic updates · 15 sec</span></div>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <section class="summary-grid" id="summary" aria-label="Frame summary"><div class="summary-tile"><span>Machines online</span><strong>—</strong><small>Waiting for health checks</small></div><div class="summary-tile"><span>Active streams</span><strong>—</strong><small>Playback service</small></div><div class="summary-tile"><span>Mac conversion jobs</span><strong>—</strong><small>Across reachable workers</small></div><div class="summary-tile"><span>Queued work</span><strong>—</strong><small>Source reads and uploads</small></div></section>
+  <section class="section" aria-labelledby="stream-title"><div class="section-heading"><div><h2 id="stream-title">Streaming</h2><p id="stream-scope">Live playback workload</p></div><span class="tag">Last 5 minutes</span></div><div class="stream-grid" id="streaming"></div></section>
+  <section class="section" aria-labelledby="mac-title"><div class="section-heading"><div><h2 id="mac-title">Mac minis <span class="count" id="mac-count">—</span></h2><p>CPU, GPU, memory, and conversion capacity</p></div><span class="tag">VideoToolbox</span></div><div id="mac-chart-controls"></div><div class="mac-grid" id="macs"><div class="empty">Checking the Mac workers…</div></div><p class="footnote">Resource samples every 5 sec. Mac charts build up to an hour of history while the dashboard is viewed. Open a Mac for more detail.</p></section>
+  <section class="section" aria-labelledby="replica-title"><div class="section-heading"><div><h2 id="replica-title">Frame replicas <span class="count" id="replica-count">—</span></h2><p>Resources used by each Frame workload</p></div></div><div class="replica-grid" id="replicas"></div></section>
+  <section class="section" aria-labelledby="fleet-title"><div class="section-heading"><div><h2 id="fleet-title">Frame replica hosts <span class="count" id="fleet-count">—</span></h2><p>Whole-machine resources on Frame’s current hosts</p></div><a id="runners-link" class="text-link" href="https://runners.billybishop4-workers.xyz/#/apps/frame" target="_blank" rel="noopener noreferrer">Open Runners ↗</a></div>
+    <div class="trends"><div class="trend-panel"><div class="trend-title"><h3>Host CPU</h3><span id="cpu-value">—</span></div><div id="cpu-chart" class="chart-slot"></div><div class="chart-caption"><span>Average across Frame hosts</span><span>Last hour</span></div></div><div class="trend-panel"><div class="trend-title"><h3>Host memory</h3><span id="memory-value">—</span></div><div id="memory-chart" class="chart-slot"></div><div class="chart-caption"><span>Used memory / total memory</span><span>Last hour</span></div></div></div>
+    <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a host, region, or pool" aria-label="Find a Frame host"></label><label class="select-label"><span class="sr-only">Host health filter</span><select id="filter"><option value="all">All Frame hosts</option><option value="attention">Needs attention</option></select></label><span id="table-count" class="muted"></span></div>
+    <div class="table-wrap"><table><thead><tr><th scope="col">Machine</th><th scope="col">Health</th><th scope="col">CPU</th><th scope="col">Memory</th><th scope="col">Disk used</th><th scope="col">Network ↓ / ↑</th><th scope="col">Sample</th></tr></thead><tbody id="machines"><tr><td colspan="7" class="empty">Loading machine metrics…</td></tr></tbody></table></div>
+  </section>
+  <footer><span id="service-detail">Read-only health monitoring</span><span>Missing readings appear as —, never as zero.</span></footer>
+</main>
+<dialog id="detail"><div class="dialog-top"><div><p class="eyebrow" id="detail-kind">MACHINE HEALTH</p><h2 id="detail-title"></h2></div><button id="close-detail" class="icon-button" aria-label="Close machine details">✕</button></div><div id="detail-body"></div></dialog>
+<!-- HEALTH_SCRIPT -->
+</body>
+</html>

@@ -1308,5 +1308,9 @@
     .tb { flex-direction: row; font-size: 11px; }
   }
 
+  .health-link { display:flex; align-items:center; gap:6px; margin-left:auto; color:var(--t2); font-size:12px; min-height:44px; padding:8px; border-radius:10px; }
+  .health-link svg { width:21px; height:21px; }
+  .health-link:hover { color:var(--t1); background:rgba(150,130,240,.12); }
+  @media(max-width:879px) { .health-link span { display:none; } }
 </style>
 </head>

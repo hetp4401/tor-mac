@@ -1,0 +1,28 @@
+{
+  "platform": "local macOS",
+  "cpu_per_core": [
+    72.9,
+    63.8,
+    63.0,
+    57.4,
+    29.8,
+    12.8,
+    0,
+    0
+  ],
+  "gpu": {
+    "gpu_percent": 0.0,
+    "gpu_renderer_percent": 0.0,
+    "gpu_tiler_percent": 0.0,
+    "gpu_memory_used": 36913152.0,
+    "gpu_memory_allocated": 1663401984.0,
+    "gpu_state": "available",
+    "gpu_sample_at": 1794605205.237365,
+    "gpu_error": null,
+    "gpu_name": "AGXAcceleratorG13G_B0",
+    "gpu_devices": 1,
+    "gpu_reason": null
+  },
+  "collector_steady_median_ms": 3.135,
+  "collector_steady_max_ms": 5.863
+}

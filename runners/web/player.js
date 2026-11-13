@@ -135,15 +135,14 @@ function loadHls() {
   });
   return loadHls.p;
 }
-const PATIENT = {maxTimeToFirstByteMs: 30000, maxLoadTimeMs: 120000, timeoutRetry: {maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0},
-                 errorRetry: {maxNumRetry: 6, retryDelayMs: 2000, maxRetryDelayMs: 6000}};  // (a piece being made sends nothing for up to
-function hlsConfig(from) {  // (90 s ahead, 30 s behind; the master may take a cold probe's 35 s; playlists come from the reader)
-  return {startPosition: from || -1, maxBufferLength: 90, maxMaxBufferLength: 600, maxBufferSize: 200 * 1000 * 1000, backBufferLength: 30,
-          fragLoadPolicy: {default: PATIENT},
-          playlistLoadPolicy: {default: Object.assign({}, PATIENT, {maxLoadTimeMs: 60000, errorRetry: {maxNumRetry: 2, retryDelayMs: 1000, maxRetryDelayMs: 2000}})},  // (a
-          manifestLoadPolicy: {default: {maxTimeToFirstByteMs: 60000, maxLoadTimeMs: 60000, timeoutRetry: {maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0},
-                                         errorRetry: {maxNumRetry: 1, retryDelayMs: 1000, maxRetryDelayMs: 8000}}}};
+const PATIENT = {maxTimeToFirstByteMs: 20000, maxLoadTimeMs: 40000,
+  timeoutRetry: {maxNumRetry: 1, retryDelayMs: 250, maxRetryDelayMs: 1000},
+  errorRetry: {maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 1000}};
+function hlsConfig(from) {
+  return {startPosition: from || -1, maxBufferLength: 20, maxMaxBufferLength: 30, maxBufferSize: 48 * 1024 * 1024, backBufferLength: 20,
+    fragLoadPolicy: {default: PATIENT}, playlistLoadPolicy: {default: PATIENT}, manifestLoadPolicy: {default: PATIENT}};
 }
+
 function kindLabel(kind) {  // ("🎞 Original · 4K HDR Blu-ray": its pictogram and words)
   const i = kind.indexOf(" · "), sect = i >= 0 ? kind.slice(0, i) : kind, rest = i >= 0 ? kind.slice(i + 3) : "";
   if (SECT[sect]) return sectLabel(sect) + esc(rest ? " · " + rest : "");
@@ -178,8 +177,11 @@ function snapFrame() {  // (the frame on screen kept as a picture while the same
 const nextWords = (ep) => "Next: S" + ep.s + ":E" + ep.e + (ep.name ? " · " + ep.name : "");
 const WHY = {retry: "Reconnecting…", again: "Trying again…", "switch": "Switching to the converted stream…"};
 function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this is, else the title page's own (copied); why: "retry",
-  const prev = playing, prevT = prev && mediaFor === prev ? vid.currentTime : 0;
-  if (prev) { savePos(true); if (why) snapFrame(); }
+  const requestedURL = url;
+  url = correctedPlaybackURL(url, file, info);
+  if (url !== requestedURL) kind = "converted";
+  const prev = playing, prevT = prev && mediaFor === prev ? vid.currentTime : prev && prev.resumeAt || 0;
+  if (prev) { savePos(true); if (why) snapFrame(); releasePlayback(prev); teardown(); }
   else if (pl.classList.contains("hidden")) {  // (focus goes back there when the player closes; the input's own time starts the shield)
     const a = document.activeElement, ev = window.event;
     openerEl = a && a !== document.body && !pl.contains(a) ? a : null;
@@ -191,6 +193,8 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   const mine = {key: title.id + (ep ? ":" + ep.s + ":" + ep.e : ""), url: url, kind: kind || "", file: file || "", info: info || "", title: title, ep: ep,
                 why: why || null, eps: prev && prev.title.id === title.id ? prev.eps : null, replays: 0, started: false, apple: appleFiles.has(url), native: applePlayer()};
   playing = mine;
+  mine.correctionKeys = url !== requestedURL ? [playbackChoiceKey(requestedURL, file, info)] : [];
+  mine.fallbacks = why && why !== "next" ? (prev && prev.fallbacks || 0) + (why === "switch" ? 1 : 0) : 0;
   configureNativePlayer();
   lastPlayed = {id: title.id, type: title.type, ep: ep ? {s: ep.s, e: ep.e} : null};
   lastSave = Date.now();
@@ -213,6 +217,7 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   if (!why || why === "next") byId("pStreamDetails").open = false;
   const saved = (posStore()[posKey(mine)] || {}).t || 0;
   mine.from = why && why !== "next" && prevT > 1 ? prevT : saved > 15 ? saved - 5 : 0;  // (a reconnect goes on from the very place; a resume a
+  beginPlayback(mine);
   setUi("start");
   setBusy("start", why === "next" ? nextWords(ep) : why ? WHY[why] : mine.from ? "Picking up at " + fmtTime(mine.from) : "", !!why);
   if (prev && (!why || why === "next")) anim(byId("pDock"), RISE, 260);
@@ -237,7 +242,7 @@ function attach(mine) {  // (the stream itself: the browser's own for a file or 
     go("#/play");
     setTimeout(() => { if (playing === mine) { loadEps(mine); mediaSession(); } });
   });
-  const url = mine.url, from = mine.from, own = vid.canPlayType("application/vnd.apple.mpegurl"), mse = !!(window.MediaSource || window.ManagedMediaSource);
+  const url = mine.mediaUrl || mine.url, from = mine.from, own = vid.canPlayType("application/vnd.apple.mpegurl"), mse = !!(window.MediaSource || window.ManagedMediaSource);
   if (!/\/hls\//.test(url) || (own && (mine.native || !mse))) {
     vid.src = url;
     if (from) vid.addEventListener("loadedmetadata", () => { if (playing === mine) vid.currentTime = from; }, {once: true});
@@ -258,6 +263,7 @@ function startPlay(mine) {  // (play; refused (nothing has allowed sound yet): t
   vid.defaultPlaybackRate = vid.playbackRate = rate;
   vid.play().catch((e) => {
     if (playing !== mine || vid.error || !e || e.name !== "NotAllowedError") return;  // (an aborted play: the next load's, nothing to say)
+    mine.needsGesture = true;
     setBusy(null);
     setUi("pause");
     if (mine.native) { byId("pNativePlay").classList.remove("hidden"); nativeNotice("Tap Play to start the video."); }
@@ -303,14 +309,8 @@ function wireHls(h, mine) {
     }
     let why = "";
     try { why = d.response && d.response.text ? JSON.parse(d.response.text).error || "" : ""; } catch (e) {}
-    if (d.details === "manifestLoadError" && /\/orig\.m3u8/.test(mine.url) && code === 404) {  // (an Original the fleet may not play as it is:
-      origCheck(mine.url).then((bad) => { if (playing === mine && hls === h) twin(bad && bad.code === 404 && /as it is/.test(bad.why) ? markUnfit(mine, unfitWhy(bad.why)) : ""); });
-      return;
-    }
-    if (d.details === "manifestLoadError" && /\/orig\.m3u8/.test(mine.url) && code !== 404) {  // (an Original not ready (a file TorBox hadn't sent
-      const n = mine.origTries = (mine.origTries || 0) + 1;
-      if (n <= 3) { setTimeout(() => { if (playing === mine && hls === h) h.loadSource(mine.url); }, 1500 * n); return; }
-      if (twin("the Original didn't start", true)) return;
+    if (code >= 500 && /manifest|level/.test(d.details)) {
+      failPlay("Source unavailable", "This source is not responding. Choose another stream or try again."); return;
     }
     if (twin()) return;
     failPlay("Couldn't play this stream", (why ? why + ". " : HLSWHY[d.details] ? HLSWHY[d.details] + " " : "The stream stopped. ") + "Try again, or pick another stream.");
@@ -318,6 +318,8 @@ function wireHls(h, mine) {
 }
 function failPlay(title, detail, kind) {  // (an error: a card that stays until it's acted on; the film paused, its loading stopped)
   if (!playing) return;
+  playing.resumeAt = vid.currentTime;
+  releasePlayback(playing);
   if (nativeFullscreen()) exitFull();  // A failed system player must reveal the retry/version actions.
   if (inPip()) togglePip();
   errKind = kind || "other"; httpFail = null;
@@ -329,26 +331,18 @@ function failPlay(title, detail, kind) {  // (an error: a card that stays until 
   byId("pErrP").textContent = detail || "";
   byId("pErr").classList.remove("hidden");
   setUi("error");
+  teardown();
 }
 function bufferedAhead() {  // (seconds of picture left to play where the playhead is)
   const t = vid.currentTime, b = vid.buffered;
   for (let i = 0; i < b.length; i++) if (b.start(i) <= t + .1 && t < b.end(i)) return b.end(i) - t;
   return 0;
 }
-function tryAgain() {  // (the card's Try again: a part the fleet failed is asked for again on the same stream, from where it stopped (nothing
+function tryAgain() {
   const p = playing;
-  if (!p) return;
-  if (errKind === "http" && hls && mediaFor === p) {
-    byId("pErr").classList.add("hidden");
-    errKind = null; httpFail = null; p.stopped = false; retrying = true;
-    setUi("buffer");
-    setBusy("retry", "", true);
-    try { hls.startLoad(); } catch (e) {}
-    vid.play().catch(() => {});
-    return;
-  }
-  play(p.url, p.kind, p.file, p.info, p.title, p.ep, "again");
+  if (p) play(p.url, p.kind, p.file, p.info, p.title, p.ep, "again");
 }
+
 function elsewhere(d) {  // (a playlist or piece the master sent to a copy's own address, not this site's: that copy may be gone)
   const u = d.url || (d.frag && d.frag.url) || (d.context && d.context.url) || "";
   return /^https?:\/\//.test(u) && u.indexOf("//" + location.host + "/") < 0;
@@ -360,14 +354,11 @@ function replay(mine) {  // (the same version once more, from where it was, twic
   play(mine.url, mine.kind, mine.file, mine.info, mine.title, mine.ep, "retry");
   playing.replays = n;
 }
-function twin(why, keep) {  // (an Original that can't play here: its converted twin instead, said at once with why; keep: it may next
+function twin(why, keep) {
   const p = playing;
-  if (!p || !/\/orig\.m3u8/.test(p.url)) return false;
-  play(p.url.replace("/orig.m3u8", "/index.m3u8"), "converted (the original can't play here)", p.file, p.info, p.title, p.ep, "switch");
-  playing.twinned = why || "this browser can't play the Original";
-  if (keep) playing.orig = {url: p.url, kind: p.kind};
-  return true;
+  return p && recoverPlayback(p, why || "this browser needs compatible playback", true);
 }
+
 const UNFIT = [[/keyframe|Matroska/, "this Original's file has no keyframe index"], [/Dolby Vision only/, "this Original is Dolby Vision only"],
                [/video is/, "this Original's video doesn't play in browsers"]];
 const unfitWhy = (said) => (UNFIT.find((u) => u[0].test(said)) || [0, "this Original can't play as it is"])[1];
@@ -389,23 +380,11 @@ function origCheck(url) {  // (what the fleet says of an Original: null when its
     return get(vu).then((list) => { const map = /#EXT-X-MAP:URI="([^"]+)"/.exec(list); return map ? get(new URL(map[1], vu).href).then(() => null) : null; });
   }).catch((e) => (e && e.code !== undefined ? e : {code: 0, why: ""}));
 }
-function origFailed(p) {  // (Safari's own player gave up on an Original: the fleet says why. One it can't play as it is goes converted at
-  const t = vid.currentTime, n = p.origTries = (p.origTries || 0) + 1, code = vid.error ? vid.error.code : 0;
-  retrying = true;
-  if (p.started) setBusy("retry", "", true);  // (before its first frame it's still "Starting…", one wait with one word)
-  origCheck(p.url).then((bad) => {
-    if (playing !== p) return;
-    if (bad && bad.code === 404 && /as it is/.test(bad.why)) { twin(markUnfit(p, unfitWhy(bad.why))); return; }
-    if (!bad && n > 1 && code !== 2) { twin(markUnfit(p, "Safari couldn't play this Original", true)); return; }
-    if (n > 3) { twin("the Original didn't start", true); return; }
-    setTimeout(() => {
-      if (playing !== p) return;
-      vid.src = p.url;
-      if (t > 1) vid.addEventListener("loadedmetadata", () => { if (playing === p) vid.currentTime = t; }, {once: true});
-      startPlay(p);
-    }, bad ? 1500 * n : 400);
-  });
+function origFailed(p) {
+  if (!recoverPlayback(p, "this browser could not decode the original", false))
+    failPlay("Could not play this stream", "Choose another stream or try again.");
 }
+
 function teardown() {  // (the stream let go: hls.js destroyed, the element emptied)
   teardownN++;
   mediaFor = null;
@@ -414,6 +393,8 @@ function teardown() {  // (the stream let go: hls.js destroyed, the element empt
 }
 function stopPlayer() {  // (leaving: the place kept, the film paused at once; the stream let go once the page under has painted)
   savePos(true);
+  releasePlayback(playing);
+  teardown();
   playing = null;
   releaseLandscape();
   if (document.pictureInPictureElement === vid && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
@@ -428,8 +409,7 @@ function stopPlayer() {  // (leaving: the place kept, the film paused at once; t
   ["pAudio", "dAudio"].forEach((id) => byId(id).classList.add("hidden"));
   if ("mediaSession" in navigator) { try { navigator.mediaSession.metadata = null; } catch (e) {} }
   if (hls) { try { hls.stopLoad(); } catch (e) {} }  // (nothing more fetched from now)
-  const n = ++teardownN;
-  whenQuiet(() => { if (n === teardownN && !playing) teardown(); }, 700);  // (the rest once the page under has moved in and the finger rests)
+  ++teardownN; // Media and server work were released before painting navigation.  // (the rest once the page under has moved in and the finger rests)
 }
 function savePos(force) {  // (where it's at, every 20 s while it plays and at once on pause, on leaving, on hiding the page; Continue
   const p = playing;
@@ -639,6 +619,7 @@ function seekTo(t) {
   t = Math.max(0, Math.min(vid.duration - .25, t));
   if (Math.abs(t - vid.currentTime) < .05 && !vid.seeking) return;
   seekMine = true;
+  playbackSeek(playing, t);
   vid.currentTime = t;
 }
 function togglePlay() {
@@ -668,7 +649,7 @@ function hint(t) {  // (the reader may ready the piece at t before the player as
   if (i < 0 || now - hintAt < 334) return;
   hintAt = now;
   const m = /^(.*\/hls\/[^/]+\/)[^/?]+\.m3u8\?r=(\d+)/.exec(hls.levels[0].details.url || "");
-  if (m) fetch(m[1] + "h" + i + "?r=" + m[2]).catch(() => {});
+  if (m && playing.session && !playing.session.ended) playbackSeek(playing, t);
 }
 let jumpTo = 0, jumpT = null, jumpAt = -1e9;
 function jump(d) {  // (±10 s: the first seeks at once; more within 400 ms of a seek add up, applied 150 ms after the last)
@@ -1307,6 +1288,7 @@ vid.addEventListener("durationchange", () => { if (live()) { paintDur(); aimBar(
 vid.addEventListener("seeking", () => {
   if (!live()) return;
   const t = vid.currentTime, s = snap(t);
+  playbackSeek(playing, t);
   if (s !== t) { vid.currentTime = s; return; }  // (the nested 'seeking' does the rest)
   const mine = seekMine;
   seekMine = false;
@@ -1341,11 +1323,13 @@ vid.addEventListener("playing", () => {
   pl.classList.add("live");  // (the cover fades out, once a title)
   byId("pSnap").classList.add("hidden");
   retrying = false;
+  p.needsGesture = false; p.lastMovement = Date.now();
   if (nexting) { nexting = false; pl.classList.remove("nexting"); }
   settleUi();
   aimBar();
   if (!p.started) {
     p.started = true;
+    rememberPlayback(p);
     if (p.from > 0 && !p.why) showRestart();
     if (p.twinned) say("Playing the converted stream: " + p.twinned);
   }
@@ -1366,6 +1350,7 @@ vid.addEventListener("ratechange", () => { if (live()) aimBar(); });
 vid.addEventListener("progress", paintBuf);
 vid.addEventListener("timeupdate", () => {
   if (!live()) return;
+  if (Math.abs(vid.currentTime - playing.lastTime) > .1) { playing.lastTime = vid.currentTime; playing.lastMovement = Date.now(); }
   savePos(false);
   upNext();
   if (!scrubbing() && !pl.classList.contains("hide")) paintTimes(vid.currentTime);
@@ -1382,23 +1367,8 @@ vid.addEventListener("error", () => {  // (a file: once more from where it was, 
   const p = playing;
   if (!live() || hls || uiState === "error" || !vid.getAttribute("src")) return;
   if (/\/orig\.m3u8/.test(p.url)) { origFailed(p); return; }
-  if (p.apple && /\/file\//.test(p.url) && !(vid.error && vid.error.code === 2 && !p.reloads)) {  // (a file listed for Apple's player that it
-    const tok = p.url.split("/file/")[1].split("/")[0], why = markUnfit(p, "Safari couldn't play this file as it is", true);
-    play(p.url.split("/file/")[0] + "/hls/" + tok + "/index.m3u8", "converted (the original can't play here)", p.file, p.info, p.title, p.ep, "switch");
-    playing.twinned = why;
-    return;
-  }
-  if (vid.error && vid.error.code === 2 && !p.reloads) {
-    p.reloads = 1;
-    const t = vid.currentTime;
-    retrying = true;
-    setBusy("retry", "", true);
-    vid.src = p.url;
-    if (t > 1) vid.addEventListener("loadedmetadata", () => { if (playing === p) vid.currentTime = t; }, {once: true});
-    startPlay(p);
-    return;
-  }
-  if (!twin()) failPlay("Couldn't play this stream", (vid.error && vid.error.code === 4 ? "The browser couldn't open it." : "The stream broke off.") + " Try again, or pick another stream.");
+  if (!recoverPlayback(p, "this stream needs compatible playback", !/\/file\//.test(p.url)))
+    failPlay("Could not play this stream", "Choose another stream or try again.");
 });
 
 const scrolls = {};

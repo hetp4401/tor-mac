@@ -10,12 +10,13 @@ frontend package manager or build service is required.
 | `body.html` | Navigation, catalog, search, library, title page and episode sheet |
 | `core.js` | Catalog loading, search, library, title and episode rendering |
 | `versions.js` | Source classification, size ordering, source actions and sheet behavior |
+| `session.js` | Playback leases, cancellation, progress watchdog, bounded recovery and seek controls |
 | `player.html`, `player.js` | Playback, native Apple controls, fallback controls, routing and navigation |
 | `pwa/` | Manifest, icons, service worker and installation/update client |
 | `tests/` | Focused source, player lifecycle and service-worker tests |
 
 `build.py` replaces the single `<!-- TOR_PLAYER -->` marker in `body.html`, then
-concatenates scripts in this order: `core.js`, `versions.js`, `player.js`,
+concatenates scripts in this order: `core.js`, `versions.js`, `session.js`, `player.js`,
 `pwa/client.js`. They share one script scope. Existing element IDs, hash routes
 and `fb.*` local-storage keys are integration contracts. The Frame rename keeps
 those keys and existing PWA identity/cache protocols so saved libraries and
@@ -69,12 +70,9 @@ when their APIs are available. Other supported browsers retain the custom
 player and hls.js fallback. Native fullscreen exits and PiP browsing preserve
 the current playback session where supported. Touch playback requests fullscreen during the original tap and attempts landscape orientation only where the browser supports it; exiting, PiP and navigation release the lock. Safari may keep rotation under OS control.
 
-The streaming backend was restored to the saved v91 Mac-to-Tor behavior for
-buffering, seeking and Mac dispatch. The Frame interface and native Apple player
-remain in place. Native HLS now relies on the browser's media requests; the added
-time-based `/hls/<token>/seek` hint endpoint and client requests were removed.
-The pre-existing hls.js piece-hint path remains unchanged. No latency improvement
-is claimed for this rollback without a playback measurement.
+Each attachment starts a fresh server session while retaining synchronous playback in the original click task. Switching and closing send a high-priority keepalive stop request, with a beacon fallback, and abort pending control requests. Source errors are reported promptly; format errors recover through compatible playback and, when needed, forced encoding. Successful format corrections are remembered on this device for seven days, separately for each source mode, so repeat selections skip the failed decoder attempt. Progress-based stall detection and recovery are bounded. Native and custom seeks issue coalesced, prioritized controls, including backward seeks within the buffer. Progress reports carry the current seek sequence. The server prepares the actual saved position and rejects stale controls; media downloads never override a managed session's playhead. Direct-file sessions retain byte-range playback without creating HLS work.
+
+Pause, Picture in Picture, AirPlay and page visibility retain their existing navigation behavior. A suspended native player can renew an idle lease; an explicitly closed lease cannot restart. Page restoration creates a new session at the saved position.
 
 Chromium desktop/mobile viewport checks verify layout and application flows.
 Automated tests verify lifecycle decisions using simulated browser APIs. Neither
