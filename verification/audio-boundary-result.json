@@ -1,0 +1,67 @@
+{
+  "baseline_commit": "f5d8b2e46757d7ddfbd19164df255d24b3c18f82",
+  "code": "36c9f6f122b6",
+  "checked_at": 1794608797.72291,
+  "source": "local AC-3 48 kHz steady tone",
+  "baseline": {
+    "segment_spans": [
+      [
+        9.978667,
+        12.026666
+      ],
+      [
+        11.994267,
+        13.999600000000001
+      ],
+      [
+        13.978267,
+        16.026266
+      ],
+      [
+        15.994267,
+        17.999599999999997
+      ]
+    ],
+    "join_gaps_ms": [
+      -32.399,
+      -21.333,
+      -31.999
+    ],
+    "quiet_5ms_windows": 18,
+    "minimum_to_median_amplitude": 0.0,
+    "maximum_sample_step": 0.09977,
+    "median_preparation_ms": 394.2,
+    "timestamp_warning": true
+  },
+  "fixed": {
+    "segment_spans": [
+      [
+        10.0,
+        12.005333
+      ],
+      [
+        12.005333,
+        14.010666
+      ],
+      [
+        14.010667,
+        16.016
+      ],
+      [
+        16.016,
+        18.0
+      ]
+    ],
+    "join_gaps_ms": [
+      0.0,
+      0.001,
+      0.0
+    ],
+    "quiet_5ms_windows": 0,
+    "minimum_to_median_amplitude": 0.9477,
+    "maximum_sample_step": 0.00743,
+    "median_preparation_ms": 427.2,
+    "timestamp_warning": false
+  },
+  "timing_scope": "Local audio preparation only; not browser startup or production seek latency."
+}

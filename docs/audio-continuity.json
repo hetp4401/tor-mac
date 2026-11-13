@@ -1,0 +1,59 @@
+{
+  "issue": "Microstutter at converted AAC audio segment boundaries",
+  "deployed": true,
+  "app": "frame",
+  "version": 14,
+  "code": "36c9f6f122b6",
+  "checked_at_utc": "2026-11-13T22:30:41.803008+00:00",
+  "cause": [
+    "Independent AAC encoding retained encoder priming and padding at every cut, causing overlapping timestamps and audible silent dips.",
+    "Millisecond Matroska packet timestamps and insufficient decoder context could also shift the waveform at a cut."
+  ],
+  "changes": [
+    "Place every AAC piece on one 48 kHz / 1024-sample clock.",
+    "Decode and encode bounded real audio before and after each cut; remove priming and padding after encoding.",
+    "Recover the sample clock from indexed Matroska packet timestamps when they fit a constant rate, preserving real timing discontinuities.",
+    "Normalize 44.1 kHz inputs before sample-based trimming.",
+    "Use the same path for individual, batched, and compatible-audio remux requests.",
+    "Track batch audio processes for immediate cancellation when playback stops.",
+    "Version AAC caches and saved probe metadata so old audio cannot hide the fix."
+  ],
+  "verification": {
+    "media_tests": {
+      "passed": 33,
+      "log": "verification/audio-final-media-tests.log",
+      "includes": [
+        "AAC 48 kHz",
+        "AAC 44.1 kHz",
+        "AC-3",
+        "E-AC-3",
+        "TrueHD",
+        "alternate audio track",
+        "cold seek",
+        "HTTP fallback",
+        "mixed batch/single joins",
+        "cache invalidation",
+        "batch cancellation",
+        "existing playback lifecycle and HTTP checks"
+      ]
+    },
+    "waveform": "verification/audio-boundary-result.json",
+    "iphone_simulator": "verification/audio-simulator-result.json",
+    "production": "verification/audio-live-result.json"
+  },
+  "performance": {
+    "player_buffering_changed": false,
+    "encoding": "One FFmpeg process per requested piece, or the existing shared process for a batch.",
+    "context": "Bounded decoder/encoder context reuses indexed source blocks.",
+    "local_preparation_median_ms": {
+      "before": 394.2,
+      "after": 427.2
+    },
+    "timing_scope": "Local audio preparation only; not browser startup or production seek latency."
+  },
+  "limits": [
+    "Native UI checks verify rendering, seeking and stalls; decoded synthetic waveform checks verify silent dips and clicks.",
+    "Live source checks verify decodability and packet continuity, not a listening test on the user\u2019s exact device."
+  ],
+  "after_update": "Reopen the converted stream to replace any audio already buffered by the player."
+}

@@ -1788,7 +1788,7 @@ READER = f"{APP}.reader."
 READER_TTL = 6 * 3600
 FACTS = f"{APP}.facts."
 FACTS_TTL = 60 * 86400
-PROBE_V = 2
+PROBE_V = 3
 BROWSER_GROUPS = [
     ("1080 remux", ("from 1080p Blu-ray", "studio SDR colours · starts and seeks fastest")),
     ("4k remux", ("from 4K HDR Blu-ray", "most detail · HDR tone-mapped")),
@@ -3318,7 +3318,7 @@ def probe_now(key):
     t2 = time.time()
     out = media_run(key, ["ffprobe", "-v", "error", "-headers", f"X-Tor-Key: {CHUNK_KEY}\r\n", "-show_entries",
                           "format=duration,size,start_time,format_name:stream=index,codec_type,codec_name,codec_tag_string,profile,level,width,height,pix_fmt,"
-                          "color_transfer,r_frame_rate,channels:stream_tags=language,title:stream_side_data=side_data_type,dv_profile",
+                          "color_transfer,r_frame_rate,channels,sample_rate:stream_tags=language,title:stream_side_data=side_data_type,dv_profile",
                           "-of", "json", f"http://127.0.0.1:{PAGE_PORT}/src/{key}?u=1"], timeout=30)
     took = time.time() - t2
     t.join(120)
@@ -3335,7 +3335,7 @@ def probe_now(key):
     audios = [{"i": s["index"], "lang": (s.get("tags") or {}).get("language"), "title": ((s.get("tags") or {}).get("title") or "").strip()[:80],
                "kind": s.get("profile") if s.get("codec_name") == "dts" and s.get("profile") else
                kinds.get(s.get("codec_name"), "PCM" if (s.get("codec_name") or "").startswith("pcm") else (s.get("codec_name") or "").upper()),
-               "ch": int(s.get("channels") or 0)} for s in audio]
+               "ch": int(s.get("channels") or 0), "rate": int(s.get("sample_rate") or 0)} for s in audio]
     duration = float(fmt["duration"])
     if got.get("broken"):
         raise SourceBroken(got["broken"])
@@ -5173,7 +5173,7 @@ def mkv_until(key, start, n, piece, track, until):
     return span
 
 
-def mac_head(head, keep):
+def mac_head(head, keep, scale=None):
 
 
 
@@ -5185,7 +5185,9 @@ def mac_head(head, keep):
         if eid == 0x1F43B675:
             break
         if eid == 0x1549A966:
-            out.append(el(eid, head[a:b]))
+            info = (el(0x2AD7B1, scale.to_bytes(4, "big")) + b"".join(
+                el(x, head[xa:xb]) for x, xa, xb in ebml(head, a, b) if x not in (0x2AD7B1, 0x4489, 0xBF))) if scale else head[a:b]
+            out.append(el(eid, info))
         elif eid == 0x1654AE6B:
             out.append(el(eid, b"".join(el(0xAE, head[xa:xb]) for x, xa, xb in ebml(head, a, b) if x == 0xAE and any(
                 y == 0xD7 and int.from_bytes(head[ya:yb], "big") in keep for y, ya, yb in ebml(head, xa, xb)))))
@@ -5846,13 +5848,18 @@ def orig_video(key, n):
     return init, orig_times(init, media, [(ts, size) for _, _, ts, size in frames], unit, TS_BASE - s0) or orig_place(init, media, TS_BASE + t)
 
 
+def audio_key(key, a, orig=False):
+    # Do not reuse AAC pieces prepared with the old per-segment priming bug.
+    return f"{key}:oa{a}" if orig and orig != "aac" else f"{key}:{'ra' if orig else 'ca'}2-{a}"
+
+
 @media_task
 def audio_piece(key, n, a, orig):
 
 
 
 
-    pk = f"{key}:{'r' if orig == 'aac' else 'o' if orig else 'c'}a{a}"
+    pk = audio_key(key, a, orig)
     data = piece_get(pk, n)
     if data is not None and (not orig or orig == "aac" or piece_get(pk, -1) is not None):
         return data
@@ -5866,12 +5873,109 @@ def audio_piece(key, n, a, orig):
     return once("audio", pk, n, make) or piece_get(pk, n)
 
 
+def aac_window(start, end):
+    # All independently prepared pieces share one 48 kHz / 1024-sample grid.
+    # Rounding both ends identically assigns each AAC frame to exactly one piece.
+    first, last = (math.ceil(t * 48000 / 1024 - 1e-8) * 1024 for t in (start, end))
+    return first, last, max(0, first - 8192)
+
+
+def aac_options(start, end, source_start):
+    first, last, warm = aac_window(start, end)
+    # Keep real audio on either side of the cut while the encoder warms up and
+    # flushes. Only then discard priming, overlap and padded packets. Trimming
+    # the PCM at every video cut used to introduce ~20-40 ms of silence/overlap.
+    # first_pts is in the resampler's input sample clock. Normalize the rate
+    # first so 44.1 kHz sources use the same trimming clock as 48 kHz sources.
+    af = (f"atrim=start={source_start + warm / 48000:.9f},aresample=48000,"
+          f"asetpts=PTS-({source_start:.9f})/TB,aresample=48000:async=1:first_pts={warm},"
+          f"atrim=end_sample={last + 2048 - warm},asetpts=N/SR/TB+{warm}/48000/TB")
+    return ["-af", af, "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-ar", "48000", "-enc_time_base:a", "1:48000",
+            "-bsf:a", f"noise=amount=0:drop=lt(pts\\,{first})+gte(pts\\,{last})",
+            "-output_ts_offset", str(TS_BASE), "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts"]
+
+
+def aac_source(key, n, a, orig=False):
+    """Reuse indexed source blocks, including bounded real decoder/encoder context."""
+    info = probed[key]
+    cuts, pos = (info["ocuts"], info["opos"]) if orig else (info["cuts"], info["pos"])
+    _, last, warm = aac_window(cuts[n], cuts[n + 1])
+    lo, hi = max(0, warm / 48000 - AUDIO_PRE), (last + 8192) / 48000
+    begin = max(0, bisect.bisect_right(cuts, lo) - 1)
+    pb = pos[begin]
+    after = bisect.bisect_right(cuts, hi)
+    size = src_meta[key].get("size") or src_lookup(key)["size"]
+    pe = pos[after] if after < len(pos) else size
+    if pe <= pb:
+        later = bisect.bisect_right(pos, pb)
+        pe = pos[later] if later < len(pos) else size
+    pe = min(pe, pb + 96 * 2**20, size)
+    head = src_head(key, pos[0], n)
+    unit, tracks = mkv_head(head)
+    numbers, order = [t for t, kind in tracks if kind == 2], [x["i"] for x in info["audios"]]
+    if len(numbers) != len(order) or a not in order:
+        raise RuntimeError(f"audio track {a}: not in the file's header")
+    track = numbers[order.index(a)]
+    low, high = (info["start"] + lo) / unit, (info["start"] + hi) / unit
+    span = b""
+    while pb + len(span) < pe:
+        work_check(key)
+        more = src_read(key, pb + len(span), min(2**20, pe - pb - len(span)), n)
+        if not more:
+            break
+        span += more
+        if any(tr == track and ts is not None and ts >= high
+               for tr, ts, _, _, _, _, _ in mkv_blocks(span, 0, len(span))):
+            break
+    blocks = [(span[s:z], r - s, ts, frames) for tr, ts, s, z, r, _, frames in mkv_blocks(span, 0, len(span))
+              if tr == track and ts is not None and low <= ts < high]
+    if not blocks:
+        raise RuntimeError(f"no audio context of track {a} in piece {n}")
+    # Matroska commonly rounds packet times to milliseconds. Restarting a
+    # decoder at those rounded values shifts the waveform at each cut, even
+    # with gap-free output PTS. Recover the constant sample clock when the
+    # packet times fit it; retain actual discontinuities and variable spacing.
+    rate = next((x.get("rate", 0) for x in info["audios"] if x["i"] == a), 0)
+    times = [b[2] * unit for b in blocks]
+    if rate and len(blocks) > 3:
+        counts, count = [], 0
+        for _, _, _, frames in blocks:
+            counts.append(count)
+            count += frames
+        mx, mt = sum(counts) / len(counts), sum(times) / len(times)
+        slope = sum((x - mx) * (t - mt) for x, t in zip(counts, times)) / sum((x - mx)**2 for x in counts)
+        step = round(slope * rate) / rate
+        origin = round(sum(t - x * step for x, t in zip(counts, times)) / len(times) * rate) / rate
+        clock = [origin + x * step for x in counts]
+        if step > 0 and max(abs(t - c) for t, c in zip(times, clock)) <= .75 * unit:
+            times = clock
+    # A microsecond timebase preserves that clock for FFmpeg. Only the selected
+    # audio track is carried, so its input stream index is always zero.
+    return mac_head(head, [track], scale=1000) + mkv_clusters(
+        [(block, r, max(0, round(t * 1e6))) for (block, r, _, _), t in zip(blocks, times)])
+
+
 @media_task
 def audio_make(key, n, a, orig):
 
     info = probed[key]
     s0, cuts = info["start"], info["ocuts"] if orig else info["cuts"]
-    if info["opos"] if orig else info["pos"]:
+    aac = not orig or orig == "aac"
+    selected = a
+    if aac:
+        if info["opos"] if orig else info["pos"]:
+            body = aac_source(key, n, a, orig)
+            src = ["-copyts", "-i", "pipe:0"]
+            selected = 0
+        else:
+            body = None
+            _, last, warm = aac_window(cuts[n], cuts[n + 1])
+            seek = max(0, warm / 48000 - 2)
+            src = ["-headers", f"X-Tor-Key: {CHUNK_KEY}\r\n", "-ss", f"{seek:.6f}",
+                   "-t", f"{(last + 4096) / 48000 - seek:.6f}", "-copyts",
+                   "-i", f"http://127.0.0.1:{PAGE_PORT}/src/{key}?u=1&n={n}"]
+        options = aac_options(cuts[n], cuts[n + 1], s0)
+    elif info["opos"] if orig else info["pos"]:
         body, first, start = audio_source(key, n, a, orig)
         src, trim = ["-copyts", "-i", "pipe:0"], f"atrim=start={first - 0.0004:.4f}"
     else:
@@ -5880,12 +5984,11 @@ def audio_make(key, n, a, orig):
         src = ["-headers", f"X-Tor-Key: {CHUNK_KEY}\r\n", "-ss", f"{max(0.0, cuts[n] - 2):.3f}", "-copyts",
                "-i", f"http://127.0.0.1:{PAGE_PORT}/src/{key}?u=1&n={n}"]
         trim = f"atrim=start={start:.3f}:end={s0 + cuts[n + 1]:.3f}"
+    if not aac:
+        options = ["-af", trim + ",asetpts=STARTPTS+N/SR/TB", "-c:a", "flac", "-fflags", "+bitexact", "-use_editlist", "0",
+                   "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont", "-frag_duration", "100000000", "-f", "mp4"]
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + src + \
-          ["-map", f"0:{a}", "-af", trim + ",asetpts=STARTPTS+N/SR/TB", "-map_metadata", "-1", "-map_chapters", "-1"] + \
-          (["-c:a", "flac", "-fflags", "+bitexact", "-use_editlist", "0", "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont",
-            "-frag_duration", "100000000", "-f", "mp4"] if orig and orig != "aac" else
-           ["-c:a", "aac", "-ac", "2", "-b:a", "192k", "-output_ts_offset", f"{TS_BASE - s0 + start - first:.6f}", "-muxdelay", "0",
-            "-muxpreload", "0", "-f", "mpegts"]) + ["pipe:1"]
+          ["-map", f"0:{selected}", "-map_metadata", "-1", "-map_chapters", "-1"] + options + ["pipe:1"]
     out = media_run(key, cmd, body, timeout=30)
     if out.returncode or not out.stdout:
         raise RuntimeError(f"ffmpeg, audio piece {n} of track {a} (exit {out.returncode}): {out.stderr.decode(errors='replace')[-300:]}")
@@ -5908,32 +6011,37 @@ def orig_codecs(info, compatible=False):
     return v + ((",mp4a.40.2" if compatible else ",fLaC") if info["audios"] else "")
 
 
+@media_task
 def audio_run(key, ns, a, keep=True):
 
 
 
 
-    s0, srcs = probed[key]["start"], [audio_source(key, n, a, False) for n in ns]
+    info = probed[key]
+    srcs = [aac_source(key, n, a) for n in ns]
     ins, outs = [os.pipe() for _ in ns], [os.pipe() for _ in ns]
     cmd = ["nice", "-n", "10", "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-copyts"]
     for r, _ in ins:
         cmd += ["-i", f"pipe:{r}"]
-    for i, ((_, first, start), (_, w)) in enumerate(zip(srcs, outs)):
-        cmd += ["-map", f"{i}:{a}", "-af", f"atrim=start={first - 0.0004:.4f},asetpts=STARTPTS+N/SR/TB", "-map_metadata", "-1",
-                "-map_chapters", "-1", "-c:a", "aac", "-ac", "2", "-b:a", "192k", "-output_ts_offset", f"{TS_BASE - s0 + start - first:.6f}",
-                "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", f"pipe:{w}"]
+    for i, (n, (_, w)) in enumerate(zip(ns, outs)):
+        cmd += ["-map", f"{i}:0", "-map_metadata", "-1", "-map_chapters", "-1"] + \
+               aac_options(info["cuts"][n], info["cuts"][n + 1], info["start"]) + [f"pipe:{w}"]
     feeds, takes, timer = [open(w, "wb") for _, w in ins], [open(r, "rb") for r, _ in outs], None
+    p = None
     try:
         try:
-            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                 pass_fds=[r for r, _ in ins] + [w for _, w in outs])
+            with media_process_lock:
+                work_check(key)
+                p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                     pass_fds=[r for r, _ in ins] + [w for _, w in outs])
+                media_processes[p] = key
         finally:
             for fd in [r for r, _ in ins] + [w for _, w in outs]:
                 os.close(fd)
         timer = threading.Timer(300, p.kill)
         timer.start()
         with concurrent.futures.ThreadPoolExecutor(2 * len(ns)) as pool:
-            for fh, (body, _, _) in zip(feeds, srcs):
+            for fh, body in zip(feeds, srcs):
                 pool.submit(lambda fh, body: (fh.write(body), fh.close()), fh, body)
             got = [pool.submit(fh.read) for fh in takes]
             err = p.stderr.read()
@@ -5942,16 +6050,25 @@ def audio_run(key, ns, a, keep=True):
     finally:
         if timer:
             timer.cancel()
+        if p is not None:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+            if p.stderr:
+                p.stderr.close()
+            with media_process_lock:
+                media_processes.pop(p, None)
         for fh in feeds + takes:
             try:
                 fh.close()
             except OSError:
                 pass
+    work_check(key)
     if p.returncode or not all(got):
         raise RuntimeError(f"ffmpeg (exit {p.returncode}): {err.decode(errors='replace')[-300:]}")
     for n, data in zip(ns, got) if keep else ():
-        if not piece_has(f"{key}:ca{a}", n):
-            piece_put(f"{key}:ca{a}", n, data)
+        if not piece_has(audio_key(key, a), n):
+            piece_put(audio_key(key, a), n, data)
     return dict(zip(ns, got))
 
 
@@ -6202,7 +6319,7 @@ def fill_audio(key, m):
     def make(ns):
         try:
             a = track()
-            ns = [n for n in ns if a is not None and not piece_has(f"{key}:ca{a}", n) and in_ram(key, n, a, False)]
+            ns = [n for n in ns if a is not None and not piece_has(audio_key(key, a), n) and in_ram(key, n, a, False)]
 
             try:
                 if len(ns) > 1 and info.get("pos"):
@@ -6216,17 +6333,17 @@ def fill_audio(key, m):
 
     def ask(owner, ns):
         a = track()
-        ns = [n for n in ns if a is not None and not piece_has(f"{key}:ca{a}", n)]
+        ns = [n for n in ns if a is not None and not piece_has(audio_key(key, a), n)]
         try:
             for n, data in (sound_of(key, owner, ns, a) if ns else {}).items():
-                if not piece_has(f"{key}:ca{a}", n):
-                    piece_put(f"{key}:ca{a}", n, data)
+                if not piece_has(audio_key(key, a), n):
+                    piece_put(audio_key(key, a), n, data)
         except Exception as err:
             sound_off[owner] = time.time() + 60
             log(f"hls {key}: the sound of pieces {ns[0]}-{ns[-1]} from copy {owner}: {err}")
         finally:
             sound_asks.release()
-        rest = [n for n in ns if not piece_has(f"{key}:ca{a}", n)]
+        rest = [n for n in ns if not piece_has(audio_key(key, a), n)]
         if rest:
             audio_fill.acquire()
             make(rest)
@@ -7168,7 +7285,7 @@ class Handler(BaseHTTPRequestHandler):
         except (KeyError, ValueError):
             return self.send(400, {"error": "r"})
         own = hmac.compare_digest(self.headers.get("X-Tor-Key") or "", CHUNK_KEY)
-        pk, ctype = f"{key}:{'r' if orig == 'aac' else 'o' if orig else 'c'}a{a}", "audio/mp4" if orig and orig != "aac" else "video/mp2t"
+        pk, ctype = audio_key(key, a, orig), "audio/mp4" if orig and orig != "aac" else "video/mp2t"
         data = piece_get(pk, n) if reader == REPLICA else None
         early = data is None and not own and self.command == "GET"
         if early:

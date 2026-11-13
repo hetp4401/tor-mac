@@ -1,0 +1,201 @@
+{
+  "ok": true,
+  "rows": [
+    {
+      "mode": "remux",
+      "first_frame_ms": 4322,
+      "selected": "index.m3u8",
+      "actual": "index.m3u8",
+      "effective": "remux"
+    },
+    {
+      "stop_ack_ms": 17,
+      "status": 200
+    },
+    {
+      "mode": "original",
+      "first_frame_ms": 2624,
+      "selected": "orig.m3u8",
+      "actual": "orig.m3u8",
+      "effective": "original"
+    },
+    {
+      "mode": "original",
+      "seek": 28,
+      "milliseconds": 1072,
+      "advanced": 1.0210091663067224,
+      "actual": "orig.m3u8"
+    },
+    {
+      "mode": "original",
+      "seek": 9.333333333333334,
+      "milliseconds": 1083,
+      "advanced": 1.0079795653106487,
+      "actual": "orig.m3u8"
+    },
+    {
+      "stop_ack_ms": 92,
+      "status": 200
+    },
+    {
+      "mode": "remux",
+      "first_frame_ms": 300,
+      "selected": "index.m3u8",
+      "actual": "index.m3u8",
+      "effective": "pending"
+    },
+    {
+      "mode": "remux",
+      "seek": 28,
+      "milliseconds": 1544,
+      "advanced": 1.0339312499786395,
+      "actual": "index.m3u8"
+    },
+    {
+      "mode": "remux",
+      "seek": 9.333333333333334,
+      "milliseconds": 1232,
+      "advanced": 1.0363985009834522,
+      "actual": "index.m3u8"
+    },
+    {
+      "stop_ack_ms": 41,
+      "status": 200
+    },
+    {
+      "mode": "file",
+      "first_frame_ms": 228,
+      "selected": "sample.mp4",
+      "actual": "sample.mp4",
+      "effective": "pending"
+    },
+    {
+      "mode": "file",
+      "seek": 28,
+      "milliseconds": 1180,
+      "advanced": 1.0223923793415786,
+      "actual": "sample.mp4"
+    },
+    {
+      "mode": "file",
+      "seek": 9.333333333333334,
+      "milliseconds": 1196,
+      "advanced": 1.0196538156569126,
+      "actual": "sample.mp4"
+    },
+    {
+      "stop_ack_ms": 22,
+      "status": 200
+    },
+    {
+      "media_error": 4,
+      "message": "",
+      "url": "wrong.mp4"
+    },
+    {
+      "stop_ack_ms": 17,
+      "status": 200
+    },
+    {
+      "mode": "wrongFile",
+      "first_frame_ms": 438,
+      "selected": "wrong.mp4",
+      "actual": "index.m3u8",
+      "effective": "pending"
+    },
+    {
+      "recovered_wrong_file": true
+    },
+    {
+      "stop_ack_ms": 31,
+      "status": 200
+    },
+    {
+      "mode": "wrongFile",
+      "first_frame_ms": 171,
+      "selected": "index.m3u8",
+      "actual": "index.m3u8",
+      "effective": "pending"
+    },
+    {
+      "stop_ack_ms": 97,
+      "status": 200
+    },
+    {
+      "mode": "converted",
+      "first_frame_ms": 2363,
+      "selected": "index.m3u8?force=1",
+      "actual": "index.m3u8?force=1",
+      "effective": "converted"
+    },
+    {
+      "continuous_converted_seconds": 8.031576624997841,
+      "waiting_events": 0
+    },
+    {
+      "mode": "converted",
+      "seek": 28,
+      "milliseconds": 1184,
+      "advanced": 1.0366799580222406,
+      "actual": "index.m3u8?force=1"
+    },
+    {
+      "mode": "converted",
+      "seek": 9.333333333333334,
+      "milliseconds": 1176,
+      "advanced": 1.0181843006830764,
+      "actual": "index.m3u8?force=1"
+    },
+    {
+      "stop_ack_ms": 24,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 36,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 30,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 29,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 60,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 37,
+      "status": 200
+    },
+    {
+      "stop_ack_ms": 43,
+      "status": 200
+    },
+    {
+      "mode": "original",
+      "first_frame_ms": 168,
+      "selected": "orig.m3u8",
+      "actual": "orig.m3u8",
+      "effective": "pending"
+    },
+    {
+      "stop_ack_ms": 150,
+      "status": 200
+    }
+  ],
+  "cleanup": {
+    "cpu": 0,
+    "media": 0,
+    "mac": 0,
+    "reads": 0,
+    "queued": 0,
+    "worker": 0,
+    "work": 0
+  },
+  "cleanup_scope": "local_fixture",
+  "playback_ok": true,
+  "client_code": "36c9f6f122b6"
+}
