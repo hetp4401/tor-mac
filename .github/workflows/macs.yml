@@ -50,6 +50,7 @@ jobs:
           SLOT_TUNNEL_TOKEN: ${{ secrets[format('TUNNEL_TOKEN_{0}', inputs.slot)] }}
           GH_TOKEN: ${{ github.token }}
           SLOT: ${{ inputs.slot }}
+          SOURCE_REVISION: ${{ github.sha }}
         run: |
           start() { python3 mac.py >> mac.log 2>&1 & SVC=$!; }
           start
@@ -66,5 +67,5 @@ jobs:
           sleep 420   # (the next one boots meanwhile)
           kill -TERM $CF $CF2; sleep 35   # (the tunnels first: new pieces go to the next Mac, those under way get 30 s)
           kill -TERM $SVC                   # (then the service: it finishes any it still has, and stops)
-          for i in $(seq 1 130); do kill -0 $SVC 2>/dev/null || break; sleep 1; done; kill -9 $SVC 2>/dev/null
+          for i in $(seq 1 130); do kill -0 $SVC 2>/dev/null || break; sleep 1; done; kill -9 $SVC 2>/dev/null || true
           tail -5 mac.log; grep -c "" mac.log

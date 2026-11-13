@@ -11,6 +11,10 @@ POST /convert?t=&l=&s=&a=&h=&w=&p=&k=  (header X-Mac-Key)  body: a Matroska file
      A caller that goes meanwhile (its player went elsewhere, another Mac answered first) has its conversion ended.
 GET /healthz -> {ok, jobs, max, engine, host, draining}
 
+JSON POST /probe and /convert accept a scoped seekable source; /audio produces a
+selected audio rendition as AAC MPEG-TS, or FLAC fragmented MP4 when original=true.
+All three require X-Mac-Key. Media credentials stay inside the source relay.
+
 MAX_JOBS conversions at once; past that, 503 (the caller tries another Mac, or its own). On SIGTERM (the job hands over
 to the next Mac for its slot) it takes no more (503 "draining", said in /healthz too), finishes those under way, and
 stops."""
@@ -19,6 +23,7 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from media_index import keyframes, NoIndex, SourceBroken
 from source_media import Source, SourceError, Relay
+from prepared_media import PreparedSource, NotPrepared
 
 PORT = int(os.environ.get("PORT", "8095"))
 KEY = os.environ.get("MAC_KEY", "")
@@ -93,6 +98,28 @@ def source_options(value):
     return t, length, s, audio, hdr, width, spacing
 
 
+def audio_command(t, length, source_start, audio, original, input_url):
+    """Decode a little before the cut (notably TrueHD), then trim by source time.
+
+FLAC keeps the source channel count. Its fragmented MP4 timeline is placed by
+Tor's existing orig_place helper after splitting the init and media boxes.
+"""
+    seek = max(0, t - source_start - 2)
+    preroll = max(0, t - source_start - seek)
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", f"{seek:.6f}",
+           "-t", f"{length + preroll:.6f}", "-rw_timeout", "15000000", "-seekable", "1", "-protocol_whitelist", "http,tcp",
+           "-copyts", "-i", input_url, "-map", f"0:{audio}", "-vn", "-sn", "-dn",
+           "-af", f"atrim=start={t:.6f}:end={t + length:.6f},asetpts=STARTPTS+N/SR/TB",
+           "-map_metadata", "-1", "-map_chapters", "-1"]
+    if original:
+        cmd += ["-c:a", "flac", "-fflags", "+bitexact", "-use_editlist", "0",
+                "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont", "-frag_duration", "100000000", "-f", "mp4"]
+    else:
+        cmd += ["-c:a", "aac", "-ac", "2", "-b:a", "192k", "-output_ts_offset", f"{TS_BASE - source_start:.6f}",
+                "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts"]
+    return cmd + ["pipe:1"]
+
+
 def cached_probe(source):
     with probe_lock:
         item = probe_cache.get(source.cache_key)
@@ -103,6 +130,7 @@ def cached_probe(source):
 
 
 def probe(source, conn):
+    source.authorize()
     hit = cached_probe(source)
     if hit is not None:
         return hit
@@ -147,6 +175,35 @@ def probe(source, conn):
         while len(probe_cache) > 64:
             probe_cache.popitem(last=False)
     return info
+
+
+def convert_source(source, descriptor, options, conn):
+    """Indexed Matroska uses the same compact input as Tor, prepared on this Mac.
+
+Other formats and non-indexed intervals use ffmpeg's native seekable input. The
+metadata belongs to a separate probe job because its relay closes after probing.
+"""
+    source.authorize()
+    metadata = cached_probe(source)
+    if metadata is None:
+        probe_source = Source(descriptor)
+        metadata = probe(probe_source, conn)
+        source.bytes += probe_source.bytes
+        source.requests += probe_source.requests
+        if metadata is None:
+            return None, "cancelled"
+    try:
+        prepared = PreparedSource(source, metadata)
+        body, audio = prepared.body(*options[:4])
+    except SourceError:
+        raise
+    except (NotPrepared, IndexError, ValueError, KeyError, RuntimeError, StopIteration):
+        body = None
+    if body:
+        t, length, s, _, hdr, width, spacing = options
+        return run(command(t, length, s, audio, hdr, width, spacing), body, conn), "indexed"
+    with Relay(source) as url:
+        return run(command(*options, input_url=url), None, conn), "native"
 
 
 def gone(conn):
@@ -221,12 +278,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/healthz":
             return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
                                    "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "stuck": jobs["stuck"],
-                                   "recent": recent[-8:], "capabilities": ["source-v1"], "revision": REVISION})
+                                   "recent": recent[-8:], "capabilities": ["source-v1", "source-audio-v1", "prepared-v1"], "revision": REVISION})
         self.send(404, {"error": "not here"})
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
-        if u.path not in ("/convert", "/probe"):
+        if u.path not in ("/convert", "/probe", "/audio"):
             self.close_connection = True
             return self.send(404, {"error": "not here"})
         if not KEY or not hmac.compare_digest(self.headers.get("X-Mac-Key") or "", KEY):
@@ -234,9 +291,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "key"})
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json":
             return self.source_job(u.path)
-        if u.path == "/probe":
+        if u.path in ("/probe", "/audio"):
             self.close_connection = True
-            return self.send(415, {"error": "probe requires application/json"})
+            return self.send(415, {"error": "this media job requires application/json"})
         q = urllib.parse.parse_qs(u.query)
         try:
             t, l, s = float(q["t"][0]), float(q["l"][0]), float((q.get("s") or ["0"])[0])
@@ -302,7 +359,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(value, dict):
                 raise ValueError("a JSON object is required")
             source = Source(value.get("source"))
-            options = source_options(value) if path == "/convert" else None
+            options = source_options(value) if path in ("/convert", "/audio") else None
+            original = value.get("original", False)
+            if path == "/audio" and (not isinstance(original, bool) or options[3] < 0):
+                raise ValueError("audio requires a selected track and boolean original")
             waits = value.get("priority", 1) == 0
         except (ValueError, TypeError, OSError) as err:
             self.close_connection = True
@@ -317,6 +377,15 @@ class Handler(BaseHTTPRequestHandler):
         if busy:
             return self.send(503, {"error": busy})
         t0 = time.monotonic()
+        finished = threading.Event()
+
+        def cancel_if_gone():
+            while not finished.wait(0.2):
+                if gone(self.connection):
+                    source.cancel()
+                    return
+
+        threading.Thread(target=cancel_if_gone, daemon=True).start()
         try:
             if path == "/probe":
                 info = probe(source, self.connection)
@@ -326,8 +395,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send(200, info)
                 return
-            with Relay(source) as url:
-                out = run(command(*options, input_url=url), None, self.connection)
+            if path == "/audio":
+                with Relay(source) as url:
+                    out = run(audio_command(*options[:4], original, url), None, self.connection)
+                preparation = "native"
+            else:
+                out, preparation = convert_source(source, value["source"], options, self.connection)
             if out is None:
                 jobs["ended"] += 1
                 self.close_connection = True
@@ -338,12 +411,17 @@ class Handler(BaseHTTPRequestHandler):
             if code or not data:
                 raise SourceError("source conversion failed")
             jobs["done"] += 1
-            recent.append({"at": int(time.time()), "mode": "source-v1", "in_mb": round(source.bytes / 1e6, 2),
+            recent.append({"at": int(time.time()), "mode": "source-audio-v1" if path == "/audio" else "source-v1", "in_mb": round(source.bytes / 1e6, 2),
                            "source_requests": source.requests, "upload_s": 0, "convert_s": round(time.monotonic() - t0, 2),
-                           "out_mb": round(len(data) / 1e6, 2), "waits": waits})
+                           "out_mb": round(len(data) / 1e6, 2), "waits": waits, "preparation": preparation,
+                           "source_cache_hits": source.cache_hits, "source_cached_mb": round(source.cached_bytes / 1e6, 2)})
             del recent[:-50]
-            self.send(200, data, "video/mp2t")
+            self.send(200, data, "audio/mp4" if path == "/audio" and original else "video/mp2t")
         except SourceError as err:
+            if gone(self.connection):
+                jobs["ended"] += 1
+                self.close_connection = True
+                return
             jobs["failed"] += 1
             self.send(502, {"error": str(err)})
         except (OSError, ValueError, KeyError):
@@ -353,7 +431,8 @@ class Handler(BaseHTTPRequestHandler):
             with __import__("contextlib").suppress(OSError):
                 self.send(500, {"error": "media processing failed"})
         finally:
-            source.stop.set()
+            finished.set()
+            source.cancel()
             with lock:
                 jobs["n"] -= 1
 
