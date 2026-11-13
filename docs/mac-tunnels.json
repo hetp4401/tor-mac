@@ -1,0 +1,54 @@
+{
+  "domain": "billybishop4-workers.xyz",
+  "config_source": "cloudflare",
+  "origin": "http://localhost:8095",
+  "tunnels": [
+    {
+      "slot": "shared",
+      "id": "ff07c6ae-20b7-4b20-a8ec-87fbf4f9ddbd",
+      "name": "frame-mac",
+      "hostname": "frame-mac.billybishop4-workers.xyz",
+      "legacy_hostname": "mac.billybishop4-workers.xyz",
+      "github_secret": "TUNNEL_TOKEN"
+    },
+    {
+      "slot": "1",
+      "id": "3bfe70a6-f93e-4c86-9c12-d4a6fcdd4a03",
+      "name": "frame-mac-1",
+      "hostname": "frame-mac-1.billybishop4-workers.xyz",
+      "legacy_hostname": "mac-1.billybishop4-workers.xyz",
+      "github_secret": "TUNNEL_TOKEN_1"
+    },
+    {
+      "slot": "2",
+      "id": "ab9e7da1-8731-4d91-bdfc-a961f08b0e83",
+      "name": "frame-mac-2",
+      "hostname": "frame-mac-2.billybishop4-workers.xyz",
+      "legacy_hostname": "mac-2.billybishop4-workers.xyz",
+      "github_secret": "TUNNEL_TOKEN_2"
+    },
+    {
+      "slot": "3",
+      "id": "8a140b3d-d59f-432f-b461-831685b22201",
+      "name": "frame-mac-3",
+      "hostname": "frame-mac-3.billybishop4-workers.xyz",
+      "legacy_hostname": "mac-3.billybishop4-workers.xyz",
+      "github_secret": "TUNNEL_TOKEN_3"
+    },
+    {
+      "slot": "4",
+      "id": "5afe1e1f-7d01-45ec-bfc8-b5216aba4ba6",
+      "name": "frame-mac-4",
+      "hostname": "frame-mac-4.billybishop4-workers.xyz",
+      "legacy_hostname": "mac-4.billybishop4-workers.xyz",
+      "github_secret": "TUNNEL_TOKEN_4",
+      "purpose": "Isolated benchmarks; no continuous worker"
+    }
+  ],
+  "migration": {
+    "date": "2026-11-13",
+    "retained": ["tunnel UUIDs", "tunnel tokens", "running connectors", "legacy hostnames"],
+    "verified_worker_revision": "6b362eafbc2d21c3f3348bf2dfbf8d359161dbed",
+    "verified_slots": ["1", "2", "3"]
+  }
+}

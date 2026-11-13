@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bundle the editable web sources into Tor's single-file deployment."""
+"""Bundle the editable web sources into Frame's single-file deployment."""
 import argparse
 import ast
 import base64

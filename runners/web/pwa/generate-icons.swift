@@ -1,4 +1,4 @@
-// Export the code-native Fleet mark (icon.svg) using macOS vector drawing.
+// Export the code-native Frame mark (icon.svg) using macOS vector drawing.
 // Run from the repository root: swift runners/web/pwa/generate-icons.swift
 import AppKit
 import Foundation
@@ -28,7 +28,7 @@ for (name, size) in [("apple-touch-icon.png",180),("icon-192.png",192),("icon-51
     glyph.curve(to:NSPoint(x:350,y:264), controlPoint1:NSPoint(x:363,y:256), controlPoint2:NSPoint(x:363,y:256))
     glyph.close()
     glyph.transform(using:transform)
-    color(230,195,138).setFill(); glyph.fill()
+    color(167,155,204).setFill(); glyph.fill()
     NSGraphicsContext.restoreGraphicsState()
     try image.representation(using:.png,properties:[:])!.write(to:directory.appendingPathComponent(name))
     print("\(name): \(size)×\(size)")

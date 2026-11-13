@@ -1,0 +1,44 @@
+# Compatibility address for bookmarks and an existing installed PWA.
+# The Frame media service runs separately; Runners manages both public tunnels.
+x-runner:
+  port: 8080
+  replicas: 1
+services:
+  alias:
+    image: nginx:alpine
+    env_file: .env
+    ports:
+      - "8080:8080"
+    configs:
+      - source: proxy
+        target: /etc/nginx/templates/default.conf.template
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+configs:
+  proxy:
+    content: |
+      server {
+        listen 8080;
+        resolver 1.1.1.1 1.0.0.1 valid=30s ipv6=off;
+        client_max_body_size 0;
+        location / {
+          set $$frame_origin https://frame.$${FLEET_DOMAIN};
+          proxy_pass $$frame_origin;
+          proxy_ssl_server_name on;
+          proxy_ssl_name frame.$${FLEET_DOMAIN};
+          proxy_set_header Host frame.$${FLEET_DOMAIN};
+          proxy_set_header X-Forwarded-Host $$host;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header Connection "";
+          proxy_http_version 1.1;
+          proxy_buffering off;
+          proxy_request_buffering off;
+          proxy_read_timeout 600s;
+          proxy_send_timeout 600s;
+        }
+      }

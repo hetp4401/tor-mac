@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update only Tor's inline Python config, keeping its existing image and volumes.
+"""Update only Frame's inline Python config, keeping its existing image and volumes.
 
 RUNNERS_ADMIN_PASSWORD is read from the environment. --expect-version prevents an
 unnoticed concurrent deployment from being overwritten. --apply is explicit.
@@ -45,7 +45,7 @@ def compose_source(compose, source):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--url', default=os.environ.get('RUNNERS_URL', 'https://runners.billybishop4-workers.xyz'))
-    ap.add_argument('--app', default='tor')
+    ap.add_argument('--app', default='frame')
     ap.add_argument('--expect-version', required=True, type=int)
     ap.add_argument('--source', type=Path, default=Path(__file__).with_name('tor.py'))
     ap.add_argument('--mode', choices=['source', 'legacy'], default='legacy')

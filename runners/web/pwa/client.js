@@ -45,7 +45,7 @@
       refresh();
     }, 15000);
     registration.waiting.postMessage({type: "FLEET_ACTIVATE_UPDATE"});
-    message("updating", "Updating Fleet", "Your library and watch progress will stay on this device.");
+    message("updating", "Updating Frame", "Your library and watch progress will stay on this device.");
   }
   function refresh() {
     if (install) install.hidden = standalone() || (!prompt && !ios && !safari);
@@ -58,13 +58,13 @@
     }
     if (kind === "offline") hide();
     if (reloadAvailable && kind !== "install") {
-      message("update", "Ready to finish updating", "Reload Fleet to use the new version. Your library and progress will stay here.", "Reload", () => {
+      message("update", "Ready to finish updating", "Reload Frame to use the new version. Your library and progress will stay here.", "Reload", () => {
         if (!activePlayback()) location.reload();
       });
       return;
     }
     if (registration && registration.waiting && registration.waiting !== dismissedUpdate && kind !== "install" && kind !== "updating") {
-      message("update", "A new Fleet is ready", "Update when you’re ready. Your library and progress will stay here.", "Update", updateAction);
+      message("update", "Frame update available", "Update when you’re ready. Your library and progress will stay here.", "Update", updateAction);
     }
   }
   if (install) install.onclick = async () => {
@@ -73,13 +73,13 @@
       const pending = prompt;
       prompt = null;
       try { await pending.prompt(); await pending.userChoice; } catch (_) {
-        message("install", "Install Fleet", "Open your browser’s menu and choose Install app or Add to Home Screen.");
+        message("install", "Install Frame", "Open your browser’s menu and choose Install app or Add to Home Screen.");
       }
       refresh();
     } else if (ios) {
-      message("install", "Add Fleet to your Home Screen", "Open the Share menu, choose Add to Home Screen, then tap Add.", "Got it", hide);
+      message("install", "Add Frame to your Home Screen", "Open the Share menu, choose Add to Home Screen, then tap Add.", "Got it", hide);
     } else if (safari) {
-      message("install", "Keep Fleet in your Dock", "In Safari, open the File menu and choose Add to Dock.", "Got it", hide);
+      message("install", "Keep Frame in your Dock", "In Safari, open the File menu and choose Add to Dock.", "Got it", hide);
     }
   };
   window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); prompt = event; refresh(); });

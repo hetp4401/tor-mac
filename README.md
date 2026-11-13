@@ -1,10 +1,18 @@
-# tor-mac
+# Frame
 
-Tor's media workers run on three GitHub-hosted Apple Silicon macOS jobs. The production configuration prioritizes cold-start and first-seek latency: Runners probes and prepares compact video segments, then the Macs convert them using VideoToolbox. Runners caches source bytes and finished segments and preserves separate language tracks.
+Frame's media workers run on three GitHub-hosted Apple Silicon macOS jobs. The production configuration prioritizes cold-start and first-seek latency: Runners probes and prepares compact video segments, then the Macs convert them using VideoToolbox. Runners caches source bytes and finished segments and preserves separate language tracks.
 
 An opt-in source mode moves probing, keyframe extraction, segment preparation, and audio conversion onto the Macs too. Both modes passed the live benchmark; compact uploads remain the default because cold starts and first uncached seeks were faster. See `benchmark/README.md` for the measured tradeoff.
 
-The production workers are `https://mac-1.billybishop4-workers.xyz` through `mac-3`. Each slot has its own persistent Cloudflare Tunnel. The shared `https://mac.billybishop4-workers.xyz` address also exists; Tor selects individual slots to distribute jobs.
+The production workers are `https://frame-mac-1.billybishop4-workers.xyz` through `frame-mac-3`. Each slot has its own persistent Cloudflare Tunnel. The shared `https://frame-mac.billybishop4-workers.xyz` address also exists; Frame selects individual slots to distribute jobs. The previous `mac` and `mac-1` through `mac-4` hostnames remain aliases. The rename retained the existing tunnel UUIDs, tokens, and running workers; slot 4 remains available for isolated benchmarks. See [the tunnel mapping](docs/mac-tunnels.json).
+
+## App and compatibility addresses
+
+Open [Frame](https://frame.billybishop4-workers.xyz/watch). Its Runners app is `frame`; deployment defaults to that name. Runners manages its shared and numbered public tunnels, so it needs no app-specific cloudflared sidecar or tunnel token.
+
+The previous `tor` app is a small streaming reverse proxy to Frame, defined in `runners/legacy-tor.compose.yaml`. This keeps existing bookmarks and installed web apps working on their original origin, where browser-saved library and playback progress remain. A new visit to the Frame domain has its own browser storage. The legacy internal `TOR_*` environment variables and Python filename remain compatible.
+
+The [editable web sources](runners/web/README.md) cover the responsive UI, native Apple video controls, unified size-sorted source list, and PWA install/update behavior.
 
 ## Source jobs
 
@@ -14,7 +22,7 @@ All processing endpoints require `X-Mac-Key`. JSON jobs contain a source descrip
 {
   "source": {
     "id": "stable-source-and-version",
-    "url": "https://tor-1.example.com/mac-source/source-id",
+    "url": "https://frame-1.example.com/mac-source/source-id",
     "headers": {"Authorization": "Bearer <short-lived-source-grant>"}
   },
   "start": 63,
@@ -34,7 +42,7 @@ All processing endpoints require `X-Mac-Key`. JSON jobs contain a source descrip
 - The original binary `POST /convert?t=&l=&s=&a=&h=&w=&p=&k=` protocol remains available for old clients and comparison tests.
 - `GET /healthz`: engine, capabilities, revision, capacity, draining status, and bounded recent timings/cache statistics. No access keys or source URLs are returned.
 
-`start` is an absolute source timestamp; `source_start` is the file's timestamp origin. Output uses Tor's existing timestamp convention (10 seconds plus time within the film). `audio` is the original FFprobe stream index, and priority `0` means a player is waiting.
+`start` is an absolute source timestamp; `source_start` is the file's timestamp origin. Output uses Frame's existing timestamp convention (10 seconds plus time within the film). `audio` is the original FFprobe stream index, and priority `0` means a player is waiting.
 
 Source credentials are scoped to one source and replica for 10 minutes. Workers accept only HTTPS URLs under `SOURCE_HOST_SUFFIX` (default `billybishop4-workers.xyz`), on the `/mac-source/` route; upstream redirects are rejected. A loopback relay keeps origin credentials out of FFmpeg arguments. Each job authenticates with the origin before accessing the shared cache. Upstream reads are bounded to 512 KiB; the in-memory byte cache is capped at 128 MiB and expires after 10 minutes. Worker replacement discards these caches.
 
@@ -42,7 +50,7 @@ VideoToolbox accelerates video decoding, scaling, HDR conversion, and encoding. 
 
 ## Runners integration
 
-`runners/tor.py` is the Tor application source, recovered from deployed version 91 and updated with source jobs. It retains the existing UI, source/cache storage, language playlists, and original-quality video remuxing. Original video remuxing remains on Runners; unavailable Macs also permit the existing local fallback. Source mode avoids racing local video conversion against a healthy Mac and cancels losing hedged requests.
+`runners/tor.py` is the Frame application source, recovered from deployed version 91 and updated with source jobs. It includes the Frame web app, source/cache storage, language playlists, and original-quality video remuxing. Original video remuxing remains on Runners; unavailable Macs also permit the existing local fallback. Source mode avoids racing local video conversion against a healthy Mac and cancels losing hedged requests.
 
 `MAC_INPUT_MODE=legacy` is the production default and selects compact binary uploads for cold latency. `source` explicitly opts into Mac-owned source processing. `runners/deploy.py` updates only the inline Python Compose config and code marker, retaining the app's existing Dockerfile, replicas, services, and volumes:
 

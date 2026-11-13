@@ -1,8 +1,9 @@
-# Keeps MACS Macs serving tor-mac (mac.py): each behind its slot's own address (https://mac-<slot>.billybishop4-workers.xyz,
-# for a caller to spread its work over them) and all behind https://mac.billybishop4-workers.xyz (whichever is up; but
+# Keeps MACS Macs serving Frame (mac.py): each behind its slot's own address (https://frame-mac-<slot>.billybishop4-workers.xyz,
+# for a caller to spread its work over them) and all behind https://frame-mac.billybishop4-workers.xyz (whichever is up; but
 # Cloudflare sends a caller's requests to the one nearest it, not around them all). Each one starts its
 # own replacement (a run for the same slot) before GitHub's 6-hour limit and hands over to it; the keeper, every 30
 # minutes, starts any slot that isn't running (the first time, or after one failed).
+# Tunnel UUIDs and existing token secrets are unchanged; the older mac hostnames remain aliases.
 name: macs
 run-name: ${{ github.event_name == 'schedule' && 'keeper' || format('mac {0}', inputs.slot) }}
 on:

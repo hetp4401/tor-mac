@@ -39,7 +39,7 @@ function whenQuiet(f, after, quiet) {  // (f once nobody has scrolled or touched
   setTimeout(go, after || 0);
 }
 const plainErr = (e) => (!navigator.onLine || /fetch|network|load failed/i.test(String((e && e.message) || "")) ? "Check the connection." :
-  "The fleet didn't answer. Try again in a moment.");  // (an error said in plain words: no "Failed to fetch", no fleet internals)
+  "The service didn't answer. Try again in a moment.");  // (an error said in plain words: no "Failed to fetch", no fleet internals)
 document.addEventListener("animationend", (e) => {  // (a finished entrance leaves nothing behind)
   const c = e.target.classList;
   if (c && c.contains("enter")) c.remove("enter");

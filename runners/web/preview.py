@@ -74,7 +74,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8769)
-    parser.add_argument('--upstream', default='https://tor.billybishop4-workers.xyz')
+    parser.add_argument('--upstream', default='https://frame.billybishop4-workers.xyz')
     parser.add_argument('--fixtures', type=Path)
     args = parser.parse_args()
     server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)

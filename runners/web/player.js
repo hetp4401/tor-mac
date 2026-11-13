@@ -228,7 +228,7 @@ function startPlay(mine) {  // (play; refused (nothing has allowed sound yet): t
     if (mine.native) { byId("pNativePlay").classList.remove("hidden"); nativeNotice("Tap Play to start the video."); }
   });
 }
-const HLSWHY = {manifestLoadError: "The fleet didn't send this version's playlist.", manifestLoadTimeOut: "The fleet took too long to answer.",
+const HLSWHY = {manifestLoadError: "The service didn't send this version's playlist.", manifestLoadTimeOut: "The service took too long to answer.",
                 manifestParsingError: "This version's playlist is broken.", levelLoadError: "A playlist of this version didn't load.",
                 fragLoadError: "A piece of it didn't arrive.", bufferAppendError: "This browser couldn't decode a piece of it.",
                 manifestIncompatibleCodecsError: "This browser can't decode this version."};
@@ -253,7 +253,7 @@ function wireHls(h, mine) {
       try { why = d.response.text ? JSON.parse(d.response.text).error || "" : ""; } catch (e) {}
       const ahead = bufferedAhead(), t = d.frag && d.frag.start;
       mine.stopped = true;
-      httpFail = ["Couldn't load this part", (why ? why + ". " : "The fleet couldn't get this part (" + code + "). ") + "Try again, or pick another version."];
+      httpFail = ["Couldn't load this part", (why ? why + ". " : "The service couldn't get this part (" + code + "). ") + "Try again, or pick another version."];
       if (ahead > 10 && !mine.bgRound) { mine.bgRound = true; setTimeout(() => { if (playing === mine && hls === h && mine.stopped && uiState !== "error") { mine.stopped = false; h.startLoad(); } }, 4000); return; }
       if (vid.paused || ahead < 1) failPlay(httpFail[0], httpFail[1], "http");
       if (t != null) [20000, 45000].forEach((ms) => setTimeout(() => { if (playing === mine && errKind === "http" && !document.hidden) hint(t + .1); }, ms));  // (behind the
@@ -321,7 +321,7 @@ function elsewhere(d) {  // (a playlist or piece the master sent to a copy's own
 function replay(mine) {  // (the same version once more, from where it was, twice at most: the fleet picks its reader again)
   if (!playing || playing !== mine) return;
   const n = (mine.replays || 0) + 1;
-  if (n > 2) { failPlay("Couldn't keep playing this version", "The fleet lost it twice. Try again, or pick another version."); return; }
+  if (n > 2) { failPlay("Couldn't keep playing this version", "The connection stopped twice. Try again, or pick another version."); return; }
   play(mine.url, mine.kind, mine.file, mine.info, mine.title, mine.ep, "retry");
   playing.replays = n;
 }
@@ -529,7 +529,7 @@ function setBusy(kind, words, now) {  // (null: none)
   const on = () => { if (ripOn || hudOn || gest) { busyT = setTimeout(on, 120); return; } pl.classList.add("busy"); };
   if (pl.classList.contains("busy")) on(); else busyT = setTimeout(on, GRACE[kind]);
   capT = setTimeout(() => pl.classList.add("slow"), now ? GRACE[kind] : Math.max(GRACE[kind], AFTER[kind]));
-  if (kind === "start" || kind === "seek") cap2T = setTimeout(() => { byId("pBusyCap").textContent = "Still working on it: the fleet is " + (playing && /\/orig\.m3u8/.test(playing.url) ? "getting this part ready…" : "converting this part…"); }, 10000);
+  if (kind === "start" || kind === "seek") cap2T = setTimeout(() => { byId("pBusyCap").textContent = "Still working on it: the service is " + (playing && /\/orig\.m3u8/.test(playing.url) ? "getting this part ready…" : "converting this part…"); }, 10000);
 }
 function setUi(s) {  // (idle, start, play, pause, seek, buffer, error, end)
   uiState = s;
@@ -1206,7 +1206,7 @@ function mediaSession() {
   if (!("mediaSession" in navigator) || !playing || !window.MediaMetadata) return;
   const p = playing, t = p.title, ep = p.ep, ms = navigator.mediaSession, act = (n, f) => { try { ms.setActionHandler(n, f); } catch (e) {} };
   try {
-    ms.metadata = new MediaMetadata({title: ep ? ep.name || "Episode " + ep.e : t.name || "", artist: ep ? t.name + " · S" + ep.s + ":E" + ep.e : String(t.year || ""), album: "Fleet",
+    ms.metadata = new MediaMetadata({title: ep ? ep.name || "Episode " + ep.e : t.name || "", artist: ep ? t.name + " · S" + ep.s + ":E" + ep.e : String(t.year || ""), album: "Frame",
       artwork: [{src: new URL(ep && ep.thumb ? via(ep.thumb) : pic.bg(t.id), location.href).href, sizes: "1280x720", type: "image/jpeg"}]});
   } catch (e) {}
   act("play", () => { vid.play().catch(() => {}); });
@@ -1371,7 +1371,7 @@ function showView(el, on) {  // (a page shown, or put away: a tab's page is park
 const TABS = ["home", "movies", "series", "library"];
 const ROOT = {home: "#/", movies: "#/movies", series: "#/series", library: "#/library", search: "#/search"};
 const ROOTKEY = {home: "home/home", movies: "home/movies", series: "home/series", library: "library", search: "search"};
-const NAVTITLE = {home: "Fleet", movies: "Movies", series: "Series", library: "Library", search: "Search"};
+const NAVTITLE = {home: "Frame", movies: "Movies", series: "Series", library: "Library", search: "Search"};
 const tabTop = {};  // (each tab's page on top: where tapping the tab goes back to)
 let navIntent = null, lastTab = null, playFrom = null;  // (playFrom: the page the player opened over)
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";

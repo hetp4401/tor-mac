@@ -1,6 +1,7 @@
-// Fleet keeps its interface available offline. Media, playlists, API responses
+// Frame keeps its interface available offline. Media, playlists, API responses
 // and signed source URLs always go directly to the network.
-const VERSION = "2026-11-13-ui-2";
+const VERSION = "2026-11-13-frame-3";
+// Keep the original cache lineage so existing installations migrate safely.
 const PAGE_CACHE = "fleet-shell-" + VERSION;
 const ASSET_CACHE = "fleet-assets-" + VERSION;
 const PAGE = "/watch", ASSET_LIMIT = 12;
@@ -21,7 +22,7 @@ async function keep(cacheName, key, response) {
 }
 self.addEventListener("install", (event) => {
   // A new worker waits for an explicit update action; it never reloads playback.
-  event.waitUntil(Promise.all([PAGE, "/manifest.webmanifest", ...ICONS.map((path) => path + "?v=2")].map(async (path) => {
+  event.waitUntil(Promise.all([PAGE, "/manifest.webmanifest", ...ICONS.map((path) => path + "?v=3")].map(async (path) => {
     try {
       const response = await fetch(path, {cache: "reload"});
       await keep(path === PAGE ? PAGE_CACHE : ASSET_CACHE, path, response);
@@ -45,7 +46,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "FLEET_ACTIVATE_UPDATE") event.waitUntil(self.skipWaiting());
 });
-const offlinePage = () => new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d10"><title>Fleet · Offline</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f3f5f7;font:16px/1.6 system-ui,sans-serif}main{max-width:28rem;padding:32px}p{color:#b3bbc5}a{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:12px;background:#e6c38a;color:#0b0d10;text-decoration:none;font-weight:650}</style><main><h1>You’re offline</h1><p>Reconnect to browse and play. Your saved library and watch progress stay on this device.</p><a href="/watch">Try again</a></main></html>', {status: 200, headers: {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}});
+const offlinePage = () => new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d10"><title>Frame · Offline</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d10;color:#f3f5f7;font:16px/1.6 system-ui,sans-serif}main{max-width:28rem;padding:32px}p{color:#b3bbc5}a{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:12px;background:#a79bcc;color:#0b0d10;text-decoration:none;font-weight:650}a:focus-visible{outline:2px solid #b8acd9;outline-offset:4px}</style><main><h1>You’re offline</h1><p>Reconnect to browse and play. Your saved library and watch progress stay on this device.</p><a href="/watch">Try again</a></main></html>', {status: 200, headers: {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}});
 async function pageResponse(event) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);

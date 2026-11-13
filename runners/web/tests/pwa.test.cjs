@@ -5,6 +5,12 @@ const path = require('node:path');
 const vm = require('node:vm');
 const sw = fs.readFileSync(path.join(__dirname, '../pwa/sw.js'),'utf8');
 const client = fs.readFileSync(path.join(__dirname, '../pwa/client.js'),'utf8');
+test('Frame rebranding preserves the installed app identity and refreshes its icons',()=>{
+  const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../pwa/manifest.webmanifest'),'utf8'));
+  assert.equal(manifest.name,'Frame');assert.equal(manifest.short_name,'Frame');
+  assert.equal(manifest.id,'/watch');assert.equal(manifest.start_url,'/watch');assert.equal(manifest.scope,'/');
+  assert.ok(manifest.icons.every(icon=>icon.src.endsWith('?v=3')));
+});
 function worker() {
   const listeners={}, storage=new Map(), calls=[]; let skip=0, claim=0;
   const key = x => new URL(typeof x==='string'?x:x.url,'https://fleet.test').href;
@@ -41,9 +47,10 @@ test('offline shell falls back to its cached copy and never substitutes a failed
 test('first offline visit has a useful recovery document',async()=>{
   const w=worker();w.setFetch(async()=>{throw Error('offline');});
   const r=await w.fire('fetch',{request:new Request('https://fleet.test/watch')});
-  assert.equal(r.status,200); assert.match(await r.text(),/You’re offline/);
+  const html=await r.text();
+  assert.equal(r.status,200); assert.match(html,/You’re offline/);assert.match(html,/<title>Frame · Offline<\/title>/);
 });
-test('activation removes only Fleet-owned old caches',async()=>{
+test('activation removes only app-owned old caches, including the Fleet lineage',async()=>{
   const w=worker();
   for(const name of ['fleet-1','fleet-shell-old','fleet-assets-old','unrelated-app','user-downloads',w.config.PAGE_CACHE,w.config.ASSET_CACHE])w.cache(name);
   await w.fire('activate');

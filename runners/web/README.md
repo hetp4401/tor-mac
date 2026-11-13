@@ -1,4 +1,4 @@
-# Fleet web interface
+# Frame web interface
 
 These files are the editable source of the `/watch` interface embedded in
 `runners/tor.py`. The deployed application remains a single Python file; no
@@ -17,7 +17,9 @@ frontend package manager or build service is required.
 `build.py` replaces the single `<!-- TOR_PLAYER -->` marker in `body.html`, then
 concatenates scripts in this order: `core.js`, `versions.js`, `player.js`,
 `pwa/client.js`. They share one script scope. Existing element IDs, hash routes
-and `fb.*` local-storage keys are integration contracts.
+and `fb.*` local-storage keys are integration contracts. The Frame rename keeps
+those keys and existing PWA identity/cache protocols so saved libraries and
+installed-app identity survive the visual rename.
 
 ## Build and preview
 
@@ -26,12 +28,12 @@ Run commands from the repository root:
 ```sh
 python3 runners/web/build.py
 python3 runners/web/build.py --check
-python3 runners/web/preview.py --port 8769 --upstream https://tor.billybishop4-workers.xyz
+python3 runners/web/preview.py --port 8769 --upstream https://frame.billybishop4-workers.xyz
 ```
 
 The build updates only the embedded `WATCH_PAGE` and `WEB_FILES` values in
 `runners/tor.py`, then checks Python syntax. `--check` fails when those embedded
-values are stale and does not write them. `--html /tmp/fleet-preview.html` also
+values are stale and does not write them. `--html /tmp/frame-preview.html` also
 exports the generated page; normal browser testing should use the preview
 server because the page needs same-origin APIs and media routes.
 
@@ -83,12 +85,12 @@ streaming require a connection.
 An installed update waits for an explicit Update action. Notices are hidden
 during playback, including native fullscreen and PiP. If playback starts while
 activation is completing, reload is deferred and offered later. Worker
-activation removes only Fleet-owned old caches, retaining a previously usable
+activation removes only application-owned old caches (including legacy `fleet-*` caches), retaining a previously usable
 shell when a new shell fetch failed. It does not clear library/progress data.
 
 When changing cached PWA assets, bump `VERSION` in `pwa/sw.js` and keep icon URL
 versions consistent across `head.html`, the manifest and worker precache list.
-The current icon URLs use `?v=2`. Icons can be regenerated on macOS with:
+The current icon URLs use `?v=3`. Icons can be regenerated on macOS with:
 
 ```sh
 swift runners/web/pwa/generate-icons.swift
