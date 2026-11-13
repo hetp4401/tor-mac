@@ -1,8 +1,10 @@
 # Before/after measurements
 
+Production uses compact uploads (`MAC_INPUT_MODE=legacy`) to prioritize cold starts and first seeks. Full Mac-owned source processing is available explicitly, but is not the default.
+
 The final run compared 36 successful conversions on the same GitHub-hosted Mac (slot 4), called from the same Runners host through real Cloudflare tunnels. Each output was one second / 24 frames, with matching timestamps and dimensions. The source fixtures were generated 60-second videos: H264 SDR 720p and HEVC 10-bit HDR 1080p, both with 10-second keyframe spacing and AAC audio. Both paths muxed the same audio; production normally requests video and audio separately.
 
-The source files were already cached on the Runners host. The old path ran the deployed v91 preparation algorithm using the production 8 MiB read-block setting, then uploaded compact Matroska. The new path sent an authenticated source descriptor and performed that preparation on the Mac. Protocol order alternated across three trials per case. A fresh per-run source identity kept previous trials from warming the new Mac cache.
+The source files were already cached on the Runners host. The old path ran the deployed v91 preparation algorithm using the production 8 MiB read-block setting, then uploaded compact Matroska. The new path sent an authenticated source descriptor and performed that preparation on the Mac. Protocol order alternated across three trials per case. A fresh per-run source identity kept previous benchmark runs from warming the new Mac cache.
 
 Final worker revision: `a71659ee130a093afc09e234619b747785958c70`. Full results and validation metadata are in `results/final-mac4.json`.
 

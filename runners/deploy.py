@@ -47,7 +47,7 @@ def main():
     ap.add_argument('--app', default='tor')
     ap.add_argument('--expect-version', required=True, type=int)
     ap.add_argument('--source', type=Path, default=Path(__file__).with_name('tor.py'))
-    ap.add_argument('--mode', choices=['source', 'legacy'], default='source')
+    ap.add_argument('--mode', choices=['source', 'legacy'], default='legacy')
     ap.add_argument('--apply', action='store_true')
     args = ap.parse_args()
     if not re.fullmatch(r'[a-z0-9-]+', args.app):

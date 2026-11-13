@@ -1,0 +1,10 @@
+{
+  "app": "tor-mac-bench",
+  "harness_revision": "bf8e35e3eb64",
+  "fixture_cleanup": {
+    "removed_files": 2,
+    "removed_bytes": 38731336,
+    "remaining_files": 0
+  },
+  "app_delete_status": 200
+}

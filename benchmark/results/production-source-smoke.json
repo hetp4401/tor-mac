@@ -1,0 +1,197 @@
+{
+  "rows": [
+    {
+      "fixture": "h264",
+      "playlist_s": 1.698,
+      "segments": [
+        {
+          "kind": "video_start",
+          "s": 2.495,
+          "bytes": 652172,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "h264",
+                    "width": 1280,
+                    "height": 720,
+                    "start_time": "10.041667"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "h264",
+                "width": 1280,
+                "height": 720,
+                "start_time": "10.041667"
+              }
+            ],
+            "format": {}
+          }
+        },
+        {
+          "kind": "video_seek",
+          "s": 0.584,
+          "bytes": 440296,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "h264",
+                    "width": 1280,
+                    "height": 720,
+                    "start_time": "47.021000"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "h264",
+                "width": 1280,
+                "height": 720,
+                "start_time": "47.021000"
+              }
+            ],
+            "format": {}
+          }
+        },
+        {
+          "kind": "audio_seek",
+          "s": 0.378,
+          "bytes": 30268,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "aac",
+                    "start_time": "46.991667"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "aac",
+                "start_time": "46.991667"
+              }
+            ],
+            "format": {}
+          }
+        }
+      ]
+    },
+    {
+      "fixture": "hevc_hdr",
+      "playlist_s": 0.491,
+      "segments": [
+        {
+          "kind": "video_start",
+          "s": 2.604,
+          "bytes": 1127248,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "h264",
+                    "width": 1920,
+                    "height": 1080,
+                    "start_time": "10.041667"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "h264",
+                "width": 1920,
+                "height": 1080,
+                "start_time": "10.041667"
+              }
+            ],
+            "format": {}
+          }
+        },
+        {
+          "kind": "video_seek",
+          "s": 3.141,
+          "bytes": 1161088,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "h264",
+                    "width": 1920,
+                    "height": 1080,
+                    "start_time": "47.041667"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "h264",
+                "width": 1920,
+                "height": 1080,
+                "start_time": "47.041667"
+              }
+            ],
+            "format": {}
+          }
+        },
+        {
+          "kind": "audio_seek",
+          "s": 0.476,
+          "bytes": 32900,
+          "metadata": {
+            "programs": [
+              {
+                "streams": [
+                  {
+                    "codec_name": "aac",
+                    "start_time": "46.978667"
+                  }
+                ]
+              }
+            ],
+            "stream_groups": [],
+            "streams": [
+              {
+                "codec_name": "aac",
+                "start_time": "46.978667"
+              }
+            ],
+            "format": {}
+          }
+        }
+      ]
+    }
+  ],
+  "source_before": {
+    "requests": 0,
+    "bytes": 0,
+    "probes": 0,
+    "conversions": 0,
+    "audio": 0
+  },
+  "source_after": {
+    "requests": 197,
+    "bytes": 67959512,
+    "probes": 1,
+    "conversions": 19,
+    "audio": 26
+  },
+  "mode": "source"
+}

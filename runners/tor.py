@@ -1712,7 +1712,7 @@ MAC_URLS = [u.strip().rstrip("/") for u in os.environ.get("MAC_URLS", os.environ
 MAC_KEY = os.environ.get("MAC_KEY", "")
 # Source mode delegates probing, seeking and media preparation to the Mac pool.
 # "legacy" is retained for a measured rollback during a worker rollout.
-MAC_INPUT_MODE = os.environ.get("MAC_INPUT_MODE", "source")
+MAC_INPUT_MODE = os.environ.get("MAC_INPUT_MODE", "legacy")
 MAC_SOURCE_TTL = 600
 mac_source_stats = {"requests": 0, "bytes": 0, "probes": 0, "conversions": 0, "audio": 0}
 MAC_HEDGE = {0: 2.5, 1: 8}

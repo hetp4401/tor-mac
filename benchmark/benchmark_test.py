@@ -88,6 +88,41 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(got.exception.code, 404)
         got.exception.close()
 
+    def test_cleanup_is_authenticated_scoped_and_idempotent(self):
+        address = self.base.rsplit("/mac-source/", 1)[0] + "/cleanup"
+        def request(auth):
+            req = urllib.request.Request(address, data=b"{}", headers={"Authorization": "Bearer " + auth})
+            return urllib.request.urlopen(req, timeout=3)
+        with self.assertRaises(urllib.error.HTTPError) as got:
+            request("wrong")
+        self.assertEqual(got.exception.code, 403)
+        got.exception.close()
+        original = b.FILES
+        fixture = Path(self.tmp.name) / "cleanup-generated.mkv"
+        unrelated = Path(self.tmp.name) / "keep.txt"
+        fixture.write_bytes(b"synthetic")
+        unrelated.write_bytes(b"keep")
+        b.FILES = {"generated": fixture}
+        try:
+            b.RUN_LOCK.acquire()
+            try:
+                with self.assertRaises(urllib.error.HTTPError) as got:
+                    request("test-admin")
+                self.assertEqual(got.exception.code, 409)
+                got.exception.close()
+            finally:
+                b.RUN_LOCK.release()
+            with request("test-admin") as r:
+                self.assertEqual(json.load(r)["removed_files"], 1)
+            self.assertFalse(fixture.exists())
+            self.assertTrue(unrelated.exists())
+            with request("test-admin") as r:
+                self.assertEqual(json.load(r)["removed_files"], 0)
+        finally:
+            b.FILES = original
+            b.STATE["ready"] = True
+            b.STATE["run"] = None
+
 
 if __name__ == "__main__":
     unittest.main()

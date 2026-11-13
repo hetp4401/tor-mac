@@ -357,8 +357,43 @@ class Handler(BaseHTTPRequestHandler):
                 del item["ranges"][:-100]
 
     def do_POST(self):
-        if self.path != "/run" or not self.authenticated(ADMIN_KEY):
+        if self.path not in ("/run", "/cleanup") or not self.authenticated(ADMIN_KEY):
             return self.send_json(403, {"error": "auth"})
+        if self.path == "/cleanup":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 1024 or self.headers.get("Transfer-Encoding"):
+                    raise ValueError("body")
+                if len(self.rfile.read(length)) != length:
+                    raise ValueError("body")
+            except (ValueError, OSError):
+                self.close_connection = True
+                return self.send_json(400, {"error": "invalid cleanup request"})
+            if not RUN_LOCK.acquire(False):
+                return self.send_json(409, {"error": "benchmark running"})
+            try:
+                if not STATE["ready"] and STATE.get("run") not in ("cleaned", "cleanup_failed"):
+                    return self.send_json(409, {"error": "fixtures still preparing"})
+                STATE["ready"] = False
+                removed, total = 0, 0
+                # Delete only the two explicit synthetic fixture paths. Never
+                # traverse the volume or accept a filename from the request.
+                for file in FILES.values():
+                    try:
+                        size = file.lstat().st_size
+                    except FileNotFoundError:
+                        continue
+                    file.unlink()
+                    removed += 1
+                    total += size
+                STATE["run"] = "cleaned"
+                return self.send_json(200, {"removed_files": removed, "removed_bytes": total,
+                                           "remaining_files": sum(file.exists() for file in FILES.values())})
+            except OSError:
+                STATE["run"] = "cleanup_failed"
+                return self.send_json(500, {"error": "could not remove synthetic fixtures"})
+            finally:
+                RUN_LOCK.release()
         if not STATE["ready"]:
             return self.send_json(503, {"error": "fixtures preparing"})
         try:

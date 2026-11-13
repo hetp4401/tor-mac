@@ -1,6 +1,8 @@
 # tor-mac
 
-Tor's media workers run on three GitHub-hosted Apple Silicon macOS jobs. Runners hosts the app, caches source bytes and finished segments, and assigns work to the Macs. The Mac workers probe media, read its keyframe index, prepare segments, and convert video using VideoToolbox. Audio conversion also runs on the Macs, with separate language tracks preserved.
+Tor's media workers run on three GitHub-hosted Apple Silicon macOS jobs. The production configuration prioritizes cold-start and first-seek latency: Runners probes and prepares compact video segments, then the Macs convert them using VideoToolbox. Runners caches source bytes and finished segments and preserves separate language tracks.
+
+An opt-in source mode moves probing, keyframe extraction, segment preparation, and audio conversion onto the Macs too. Both modes passed the live benchmark; compact uploads remain the default because cold starts and first uncached seeks were faster. See `benchmark/README.md` for the measured tradeoff.
 
 The production workers are `https://mac-1.billybishop4-workers.xyz` through `mac-3`. Each slot has its own persistent Cloudflare Tunnel. The shared `https://mac.billybishop4-workers.xyz` address also exists; Tor selects individual slots to distribute jobs.
 
@@ -42,7 +44,7 @@ VideoToolbox accelerates video decoding, scaling, HDR conversion, and encoding. 
 
 `runners/tor.py` is the Tor application source, recovered from deployed version 91 and updated with source jobs. It retains the existing UI, source/cache storage, language playlists, and original-quality video remuxing. Original video remuxing remains on Runners; unavailable Macs also permit the existing local fallback. Source mode avoids racing local video conversion against a healthy Mac and cancels losing hedged requests.
 
-`MAC_INPUT_MODE=source` selects Mac-side processing. `legacy` restores the old binary upload path. `runners/deploy.py` updates only the inline Python Compose config and code marker, retaining the app's existing Dockerfile, replicas, services, and volumes:
+`MAC_INPUT_MODE=legacy` is the production default and selects compact binary uploads for cold latency. `source` explicitly opts into Mac-owned source processing. `runners/deploy.py` updates only the inline Python Compose config and code marker, retaining the app's existing Dockerfile, replicas, services, and volumes:
 
 ```sh
 export RUNNERS_ADMIN_PASSWORD='<admin password>'
@@ -50,7 +52,7 @@ python3 runners/deploy.py --expect-version <current-version>       # inspect
 python3 runners/deploy.py --expect-version <current-version> --apply
 ```
 
-A concurrent app version change causes the command to stop. To select the previous protocol, use `--mode legacy` with the current version. Deployment credentials are never printed.
+A concurrent app version change causes the command to stop. To opt into the full source-processing path, use `--mode source` with the current version. Deployment credentials are never printed.
 
 ## Jobs and testing
 

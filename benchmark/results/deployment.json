@@ -1,0 +1,12 @@
+{
+  "app": "tor",
+  "version": 94,
+  "code": "91e49ece51f0",
+  "input_mode": "legacy",
+  "reason": "Prioritize measured cold-start and first-seek latency",
+  "worker_revision": "6b362eafbc2d21c3f3348bf2dfbf8d359161dbed",
+  "worker_rollout_complete": "complete",
+  "unit_and_integration_tests": 42,
+  "matched_benchmark_conversions": 36,
+  "production_smoke": "H264 and HEVC HDR video, seeking and separate audio passed in both modes"
+}
