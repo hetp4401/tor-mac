@@ -44,6 +44,8 @@ jobs:
         run: |
           brew install ffmpeg cloudflared > /tmp/brew.log 2>&1 || { tail -30 /tmp/brew.log; exit 1; }
           ffmpeg -hide_banner -encoders | grep h264_videotoolbox
+          python3 -m venv .worker-venv
+          .worker-venv/bin/python -m pip install --disable-pip-version-check -r requirements-worker.txt
       - name: serve, then hand over to the next Mac for this slot
         env:
           MAC_KEY: ${{ secrets.MAC_KEY }}
@@ -53,7 +55,7 @@ jobs:
           SLOT: ${{ inputs.slot }}
           SOURCE_REVISION: ${{ github.sha }}
         run: |
-          start() { python3 mac.py >> mac.log 2>&1 & SVC=$!; }
+          start() { .worker-venv/bin/python mac.py >> mac.log 2>&1 & SVC=$!; }
           start
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/healthz > /dev/null && break; sleep 1; done
           cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$TUNNEL_TOKEN" > cf.log 2>&1 &

@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from media_index import keyframes, NoIndex, SourceBroken
 from source_media import Source, SourceError, Relay
 from prepared_media import PreparedSource, NotPrepared
+from host_metrics import HostMetrics
 
 PORT = int(os.environ.get("PORT", "8095"))
 KEY = os.environ.get("MAC_KEY", "")
@@ -39,6 +40,7 @@ TS_BASE = 10  # (as tor.py's)
 jobs = {"n": 0, "done": 0, "failed": 0, "ended": 0, "stuck": 0, "draining": False}
 lock = threading.Lock()
 recent = []
+host_metrics = HostMetrics()
 
 
 def engine():
@@ -285,7 +287,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/healthz":
             return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
                                    "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "stuck": jobs["stuck"],
-                                   "recent": recent[-8:], "capabilities": ["source-v1", "source-audio-v1", "prepared-v1"], "revision": REVISION})
+                                   "recent": recent[-8:], "capabilities": ["source-v1", "source-audio-v1", "prepared-v1", "host-metrics-v1"],
+                                   "resources": host_metrics.snapshot(), "revision": REVISION})
         self.send(404, {"error": "not here"})
 
     def do_POST(self):
@@ -467,6 +470,7 @@ def drain(*_):
 
 
 if __name__ == "__main__":
+    host_metrics.start()
     print(f"tor-mac on :{PORT}, {ENGINE}, {MAX_JOBS} at once", flush=True)
     signal.signal(signal.SIGTERM, drain)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
