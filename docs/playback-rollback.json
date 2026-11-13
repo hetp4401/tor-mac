@@ -35,5 +35,16 @@
     "code": "b42880830acc",
     "source_tests": 17,
     "note": "Minimal title/source rows and player details; backend remains Tor v91"
+  },
+  "final_release": {
+    "app_version": 5,
+    "code": "17d068b04e55",
+    "routes_verified": [
+      "frame",
+      "frame-1",
+      "tor"
+    ],
+    "pwa_release": "2026-11-13-frame-7",
+    "note": "Compact update notice; release-specific worker URL bypasses stale CDN script at legacy Tor hostname."
   }
 }
