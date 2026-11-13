@@ -123,3 +123,5 @@ Library, source ordering and copy/download actions, episode sheets with keyboard
 focus, playback start/seek/resume/back, update deferral during playback, and
 offline recovery. Check desktop and narrow mobile widths for overflow. Run the
 Apple-device checks above separately; emulation is not a substitute.
+
+The November 13 refinement was also opened in Safari on an iPhone 17 Pro / iOS 27 CoreSimulator. Native HLS entered Apple’s fullscreen player successfully. With the simulated device in portrait, the system player stayed portrait with widescreen video; Safari did not enforce the requested landscape lock. Treat landscape orientation as browser/OS controlled, not a guaranteed site action.
