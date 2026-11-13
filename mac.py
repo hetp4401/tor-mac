@@ -287,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/healthz":
             return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
                                    "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "stuck": jobs["stuck"],
-                                   "recent": recent[-8:], "capabilities": ["source-v1", "source-audio-v1", "prepared-v1", "host-metrics-v1"],
+                                   "recent": recent[-8:], "capabilities": ["source-v1", "source-audio-v1", "prepared-v1", "host-metrics-v1", "gpu-metrics-v1"],
                                    "resources": host_metrics.snapshot(), "revision": REVISION})
         self.send(404, {"error": "not here"})
 

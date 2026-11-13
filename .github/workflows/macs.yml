@@ -57,7 +57,19 @@ jobs:
         run: |
           start() { .worker-venv/bin/python mac.py >> mac.log 2>&1 & SVC=$!; }
           start
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/healthz > /dev/null && break; sleep 1; done
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8095/healthz > /tmp/frame-worker-ready.json; then ready=1; break; fi
+            sleep 1
+          done
+          [ "$ready" = 1 ] || { echo "worker did not become ready"; tail -20 mac.log; exit 1; }
+          .worker-venv/bin/python - <<'PY'
+          import json
+          with open('/tmp/frame-worker-ready.json') as f:
+              data = json.load(f)
+          resources = data.get('resources', {})
+          print(json.dumps({'ready':data['ok'], 'revision':data.get('revision'), 'gpu_state':resources.get('gpu_state')}))
+          PY
           cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$TUNNEL_TOKEN" > cf.log 2>&1 &
           CF=$!
           cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$SLOT_TUNNEL_TOKEN" > cf-slot.log 2>&1 &

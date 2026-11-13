@@ -6,6 +6,7 @@ import time
 import unittest
 
 from host_metrics import HostMetrics, delta
+from gpu_metrics import GpuMetrics
 
 Cpu = namedtuple('Cpu', 'user system idle')
 
@@ -15,10 +16,11 @@ class Provider:
         self.tick = 0
         self.fail = False
 
-    def cpu_times(self):
+    def cpu_times(self, percpu=False):
         if self.fail:
             raise OSError('unavailable')
-        return Cpu(100 + self.tick * 5, 50 + self.tick * 5, 500 + self.tick * 30)
+        total = Cpu(100 + self.tick * 5, 50 + self.tick * 5, 500 + self.tick * 30)
+        return [Cpu(100+self.tick*10, 50, 500+self.tick*30), Cpu(100, 50, 500+self.tick*40)] if percpu else total
 
     def virtual_memory(self):
         return N(total=1000, available=700, percent=30)
@@ -45,7 +47,7 @@ class Provider:
 class HostMetricsTests(unittest.TestCase):
     def setUp(self):
         self.p = Provider()
-        self.h = HostMetrics(self.p)
+        self.h = HostMetrics(self.p, gpu=GpuMetrics(platform='test'))
 
     def test_first_sample_has_capacity_but_no_invented_rates(self):
         row = self.h.sample(now=1000, monotonic=10)
@@ -61,6 +63,7 @@ class HostMetricsTests(unittest.TestCase):
         self.p.tick = 1
         row = self.h.sample(now=1005, monotonic=15)
         self.assertEqual(row['cpu_percent'], 25)
+        self.assertEqual(row['cpu_per_core'], [25, 0])
         self.assertEqual(row['network_rx'], 20)
         self.assertEqual(row['network_tx'], 10)
         self.assertEqual(row['disk_read'], 20)
