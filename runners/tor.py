@@ -1706,6 +1706,8 @@ LAND_BLOCKS = 6
 LAND_CHUNK = 256 * 1024
 LAND_TAILS = 16
 HEAD_ALONE = 3
+# Experimental first-frame dispatch priority; disabled until measured in HLS A/B.
+COLD_PRIORITY_S = min(1000, max(0, int(os.environ.get("TOR_COLD_PRIORITY_MS", "0")))) / 1000
 JUMP_ALONE = 10
 SRC_PAUSE = 30
 
@@ -4208,6 +4210,24 @@ def quietly(fn, *args):
         log(f"{fn.__name__}: {err.__class__.__name__}: {err}")
 
 
+def cold_priority_delay(key):
+    """Bound future dispatch briefly; never block an encoder or wait indefinitely."""
+    if COLD_PRIORITY_S <= 0:
+        return 0.0
+    f = films.get(key)
+    if f is None or f.get("variant") == "orig":
+        return 0.0
+    head = f.get("landing")
+    if head is None or head in f.get("done", ()) or piece_has(key, head):
+        return 0.0
+    stamp = (head, f.get("jumped", 0))
+    state = f.get("cold_priority")
+    if state is None or state[0] != stamp:
+        remaining = max(0.0, COLD_PRIORITY_S - max(0.0, time.time() - stamp[1]))
+        state = f["cold_priority"] = (stamp, time.monotonic() + remaining)
+    return max(0.0, state[1] - time.monotonic())
+
+
 def buffer_film(key):
 
 
@@ -4243,6 +4263,13 @@ def buffer_film(key):
     try:
         while time.time() - f["seen"] < FILM_IDLE:
             f["wake"].clear()
+            delay = cold_priority_delay(key)
+            if delay:
+                # Only new future-piece conversions pause. The foreground video,
+                # audio and already-started source reads continue independently.
+                with made:
+                    made.wait(min(delay, 0.05))
+                continue
             head, orig = f["head"], f.get("variant") == "orig"
             total = len(probed[key]["ocuts"]) - 1 if orig and probed.get(key, {}).get("ocuts") else f["total"]
             n_made, made_bytes = f["made"]
@@ -5793,6 +5820,11 @@ def film_heard(key, token, head, variant=None, when=None):
             for m in (head, head + 1):
                 if m < total:
                     threading.Thread(target=quietly, args=(audio_piece, key, m, *track), daemon=True).start()
+    if (COLD_PRIORITY_S > 0 and f.get("variant") != "orig" and f.get("landing") == head
+            and head not in f["done"] and not piece_has(key, head)):
+        # Reserve the single urgent piece before background fill can claim it as
+        # part of a larger CPU batch. mac_start deduplicates an existing request.
+        mac_start(key, head, 0)
     f["wake"].set()
     if time.time() - f["claimed"] > 600:
         f["claimed"] = time.time()
@@ -6024,11 +6056,18 @@ def fill_film(key, k, owner, count):
             if idx and not watched(key):
                 time.sleep(5)
                 continue
+            delay = cold_priority_delay(key)  # outside hls_lock (piece_has takes it)
             with hls_lock:
                 run = fill_next(f, key, owner, True)
-                for x in run or []:
-                    fl["taken"][x] = owner
+                deferred = bool(delay and run and f.get("landing") not in run)
+                if not deferred:
+                    for x in run or []:
+                        fl["taken"][x] = owner
                 left = bool(fl["taken"])
+            if deferred:
+                with made:
+                    made.wait(min(delay, 0.05))
+                continue
             if run is None and left:
                 if idx:
                     break

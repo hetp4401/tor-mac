@@ -58,6 +58,8 @@ Cold probing publishes the initial source download in 256 KiB chunks so metadata
 
 A seek promotes the queued source read that owns its requested bytes, including a block reserved later in an existing batch. This prevents background read admission from holding up its own foreground consumer. Promotion retains the existing concurrency limits and shares the original download.
 
+`TOR_COLD_PRIORITY_MS` optionally reserves the first requested video piece ahead of new background conversions. The generic default is `0`; the measured production setting is `1000`. The wait ends when that piece is ready or the bounded deadline expires, and never blocks the requested piece or audio. Deploy it with `--cold-priority-ms 1000` (accepted range: 0–1000). See [the cold playback measurements](benchmark/HLS_README.md) for the first-frame benefit and subsequent-segment tradeoff.
+
 ## Jobs and testing
 
 `.github/workflows/macs.yml` keeps three Macs serving; the fourth Mac slot is available for other work. Each job requests a replacement before its six-hour limit and drains after a fixed handover wait. A scheduled keeper checks every 30 minutes for missing slots. Secrets: `MAC_KEY`, the shared `TUNNEL_TOKEN`, and `TUNNEL_TOKEN_1` through `_4` for individual slots. `SOURCE_REVISION` identifies the running commit.

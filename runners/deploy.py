@@ -48,8 +48,11 @@ def main():
     ap.add_argument('--expect-version', required=True, type=int)
     ap.add_argument('--source', type=Path, default=Path(__file__).with_name('tor.py'))
     ap.add_argument('--mode', choices=['source', 'legacy'], default='legacy')
+    ap.add_argument('--cold-priority-ms', type=int, help='Optional foreground priority window, 0–1000 ms')
     ap.add_argument('--apply', action='store_true')
     args = ap.parse_args()
+    if args.cold_priority_ms is not None and not 0 <= args.cold_priority_ms <= 1000:
+        ap.error('--cold-priority-ms must be between 0 and 1000')
     if not re.fullmatch(r'[a-z0-9-]+', args.app):
         ap.error('invalid app name')
     headers = {'User-Agent': 'tor-source-deploy/1.0'}
@@ -62,9 +65,12 @@ def main():
     compose, revision = compose_source(project['compose'], source)
     spec = {k: project[k] for k in ('files', 'port', 'replicas', 'region', 'regions', 'spreadTags') if k in project}
     spec.update(compose=compose, env={'MAC_INPUT_MODE': args.mode})
+    if args.cold_priority_ms is not None:
+        spec['env']['TOR_COLD_PRIORITY_MS'] = str(args.cold_priority_ms)
     if not args.apply:
         print(json.dumps({'app': args.app, 'current_version': project['version'], 'code': revision,
-                          'replicas': project['replicas'], 'mode': args.mode, 'applied': False}))
+                          'replicas': project['replicas'], 'mode': args.mode,
+                          'cold_priority_ms': args.cold_priority_ms, 'applied': False}))
         return
     password = os.environ.get('RUNNERS_ADMIN_PASSWORD')
     if not password:
