@@ -9,7 +9,7 @@ test('Frame rebranding preserves the installed app identity and refreshes its ic
   const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../pwa/manifest.webmanifest'),'utf8'));
   assert.equal(manifest.name,'Frame');assert.equal(manifest.short_name,'Frame');
   assert.equal(manifest.id,'/watch');assert.equal(manifest.start_url,'/watch');assert.equal(manifest.scope,'/');
-  assert.ok(manifest.icons.every(icon=>icon.src.endsWith('?v=3')));
+  assert.ok(manifest.icons.every(icon=>icon.src.endsWith('?v=4')));
 });
 function worker() {
   const listeners={}, storage=new Map(), calls=[]; let skip=0, claim=0;

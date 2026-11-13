@@ -77,6 +77,34 @@ function configureNativePlayer() {
 }
 function nativeNotice(message) { byId("pNativeStatus").textContent = message || ""; }
 function nativeFullscreen() { return !!vid.webkitDisplayingFullscreen || vid.webkitPresentationMode === "fullscreen" || fsEl() === vid; }
+const landscape = {held: false, request: 0};
+function wantsLandscape() {
+  return !!playing && !hoverable && !document.hidden && !pl.classList.contains("hidden") && !inPip() && (nativeFullscreen() || fsEl() === pl);
+}
+function releaseLandscape() {
+  landscape.request++;
+  if (!landscape.held) return;
+  landscape.held = false;
+  try { if (typeof screen !== "undefined" && screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (_) {}
+}
+function syncLandscape() {
+  if (!wantsLandscape()) { releaseLandscape(); return; }
+  const orientation = typeof screen === "undefined" ? null : screen.orientation;
+  if (landscape.held || !orientation || typeof orientation.lock !== "function") return;
+  const request = ++landscape.request;
+  landscape.held = true;
+  try {
+    Promise.resolve(orientation.lock("landscape")).then(() => {
+      // Some implementations settle after unlock. Do not strand another page
+      // sideways, but keep a newer valid fullscreen session's requested lock.
+      if (!wantsLandscape()) {
+        try { if (orientation.unlock) orientation.unlock(); } catch (_) {}
+        if (request === landscape.request) landscape.held = false;
+      }
+    }, () => { if (request === landscape.request) landscape.held = false; });
+  } catch (_) { if (request === landscape.request) landscape.held = false; }
+  // Unsupported browsers keep their system player's normal rotation behavior.
+}
 function enterNativeFullscreen(automatic) {
   if (!playing || nativeFullscreen() || inPip()) return;
   // Do not retry from metadata/playing callbacks: those have no user activation.
@@ -89,7 +117,8 @@ function enterNativeFullscreen(automatic) {
     else if (vid.webkitSetPresentationMode && vid.webkitSupportsPresentationMode && vid.webkitSupportsPresentationMode("fullscreen")) result = vid.webkitSetPresentationMode("fullscreen");
     else if (vid.requestFullscreen || vid.webkitRequestFullscreen) result = (vid.requestFullscreen || vid.webkitRequestFullscreen).call(vid);
     else { if (!automatic) nativeNotice("Start playback, then use the video's full-screen control."); return; }
-    if (result && result.catch) result.catch(rejected);
+    if (result && result.then) result.then(syncLandscape, rejected);
+    else syncLandscape();
   } catch (e) { rejected(); }
 }
 
@@ -190,7 +219,10 @@ function play(url, kind, file, info, title, ep, why) {  // (title, ep: what this
   if (mine.native) {
     attach(mine);  // Source + play stay in the source button's original user gesture.
     if (!why || why === "next") enterNativeFullscreen(true);
-  } else requestAnimationFrame(() => setTimeout(() => attach(mine)));
+  } else {
+    if (!hoverable && (!why || why === "next")) enterFull();
+    requestAnimationFrame(() => setTimeout(() => attach(mine)));
+  }
 }
 function attach(mine) {  // (the stream itself: the browser's own for a file or Safari's HLS (the Original: HDR, HEVC), else hls.js, which
   if (playing !== mine) return;
@@ -372,6 +404,7 @@ function origFailed(p) {  // (Safari's own player gave up on an Original: the fl
   });
 }
 function teardown() {  // (the stream let go: hls.js destroyed, the element emptied)
+  cancelNativeSeekHint();
   teardownN++;
   mediaFor = null;
   if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
@@ -380,6 +413,8 @@ function teardown() {  // (the stream let go: hls.js destroyed, the element empt
 function stopPlayer() {  // (leaving: the place kept, the film paused at once; the stream let go once the page under has painted)
   savePos(true);
   playing = null;
+  cancelNativeSeekHint();
+  releaseLandscape();
   if (document.pictureInPictureElement === vid && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
   else if (vid.webkitPresentationMode === "picture-in-picture" && vid.webkitSetPresentationMode) { try { vid.webkitSetPresentationMode("inline"); } catch (e) {} }
   byId("pPipReturn").classList.add("hidden");
@@ -476,6 +511,7 @@ function showPlayer() {  // (the player over the page, in this frame: it fades a
   if (!reduced.matches && pl.animate) pl.animate([{opacity: 0, transform: "scale(.99)"}, {opacity: 1, transform: "none"}], {duration: 220, easing: "cubic-bezier(.22,1,.36,1)"});
 }
 function hidePlayer() {
+  releaseLandscape();
   if (pl.classList.contains("hidden")) return;
   if (fsEl() === pl) { const x = document.exitFullscreen || document.webkitExitFullscreen; try { const r = x.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
   if (nativeFullscreen()) exitFull();
@@ -632,6 +668,48 @@ function hint(t) {  // (the reader may ready the piece at t before the player as
   hintAt = now;
   const m = /^(.*\/hls\/[^/]+\/)[^/?]+\.m3u8\?r=(\d+)/.exec(hls.levels[0].details.url || "");
   if (m) fetch(m[1] + "h" + i + "?r=" + m[2]).catch(() => {});
+}
+// Native HLS hides its playlist index from JavaScript. A time-based hint lets
+// the existing reader prioritize a cold seek without fetching a second playlist.
+const nativeSeekHint = {timer: 0, timeout: 0, controller: null, at: -1e9, session: null, sent: ""};
+function cancelNativeSeekHint() {
+  clearTimeout(nativeSeekHint.timer);
+  clearTimeout(nativeSeekHint.timeout);
+  if (nativeSeekHint.controller) nativeSeekHint.controller.abort();
+  Object.assign(nativeSeekHint, {timer: 0, timeout: 0, controller: null, at: -1e9, session: null, sent: ""});
+}
+function hintNativeSeek(t) {
+  if (!playing || !playing.native || !live() || !Number.isFinite(t) || t < 0 || isBuffered(t)) return;
+  let url;
+  try { url = new URL(playing.url, location.href); } catch (_) { return; }
+  const match = /^(.*\/hls\/[^/]+\/)(index|orig)\.m3u8$/.exec(url.pathname);
+  if (!match) return;  // Direct browser-ready files do not use the HLS reader.
+  const mine = playing, reader = url.searchParams.get("r");
+  url.pathname = match[1] + "seek";
+  url.search = "";
+  url.searchParams.set("t", t.toFixed(3));
+  if (match[2] === "orig") url.searchParams.set("v", "orig");
+  if (reader && /^[1-9]\d*$/.test(reader)) url.searchParams.set("r", reader);
+  if (nativeSeekHint.session !== mine) { cancelNativeSeekHint(); nativeSeekHint.session = mine; }
+  const target = url.href, now = performance.now();
+  if (target === nativeSeekHint.sent && now - nativeSeekHint.at < 1000) return;
+  clearTimeout(nativeSeekHint.timer);
+  const send = () => {
+    nativeSeekHint.timer = 0;
+    if (playing !== mine || !live() || isBuffered(t)) return;
+    clearTimeout(nativeSeekHint.timeout);
+    if (nativeSeekHint.controller) nativeSeekHint.controller.abort();
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    nativeSeekHint.controller = controller;
+    nativeSeekHint.at = performance.now();
+    nativeSeekHint.sent = target;
+    nativeSeekHint.timeout = controller ? setTimeout(() => controller.abort(), 5000) : 0;
+    fetch(target, {cache: "no-store", ...(controller ? {signal: controller.signal} : {})}).catch(() => {}).then(() => {
+      if (nativeSeekHint.controller === controller) { clearTimeout(nativeSeekHint.timeout); nativeSeekHint.timeout = 0; nativeSeekHint.controller = null; }
+    });
+  };
+  const wait = Math.max(0, 334 - (now - nativeSeekHint.at));
+  if (wait) nativeSeekHint.timer = setTimeout(send, wait); else send();
 }
 let jumpTo = 0, jumpT = null, jumpAt = -1e9;
 function jump(d) {  // (±10 s: the first seeks at once; more within 400 ms of a seek add up, applied 150 ms after the last)
@@ -915,7 +993,8 @@ function enterFull() {  // (the player's own full screen where the browser has o
     const f = pl.requestFullscreen || pl.webkitRequestFullscreen;
     try {
       const r = f.call(pl, {navigationUI: "hide"});
-      if (r && r.then) r.then(() => { if (!hoverable && screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(() => {}); }, () => {});  // (Android: sideways too)
+      if (r && r.then) r.then(syncLandscape, () => {});
+      else syncLandscape();
     } catch (e) {}
     return;
   }
@@ -924,13 +1003,14 @@ function enterFull() {  // (the player's own full screen where the browser has o
   if (!reduced.matches && pframe.animate) pframe.animate([{opacity: 0}, {opacity: 1}], {duration: 220, easing: "cubic-bezier(.22,1,.36,1)"});  // (the turn itself isn't
 }
 function exitFull() {
+  releaseLandscape();
   if (vid.webkitDisplayingFullscreen && vid.webkitExitFullscreen) { try { vid.webkitExitFullscreen(); } catch (e) {} return; }
   if (vid.webkitPresentationMode === "fullscreen" && vid.webkitSetPresentationMode) { try { vid.webkitSetPresentationMode("inline"); } catch (e) {} return; }
   if (fsEl()) { const x = document.exitFullscreen || document.webkitExitFullscreen; try { const r = x.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} return; }
   if (imm) { imm = false; playerLayout(); paintFull(); showCtl(); }
 }
 function toggleFull() { if (nativeFullscreen() || fsEl() || imm) exitFull(); else enterFull(); }
-["fullscreenchange", "webkitfullscreenchange"].forEach((n) => document.addEventListener(n, () => { pl.classList.toggle("fs", fsEl() === pl); playerLayout(); paintFull(); if (playing) showCtl(); }));
+["fullscreenchange", "webkitfullscreenchange"].forEach((n) => document.addEventListener(n, () => { pl.classList.toggle("fs", fsEl() === pl); syncLandscape(); playerLayout(); paintFull(); if (playing) showCtl(); }));
 function paintFull() {  // (the full screen buttons and Back say what they'll do)
   const on = nativeFullscreen() || !!fsEl() || imm;
   ["pFs", "pFs2"].forEach((id) => { const b = byId(id); b.innerHTML = on ? GLYPH.fsExit : GLYPH.fsEnter; b.setAttribute("aria-label", on ? "Exit full screen" : "Full screen"); });
@@ -939,7 +1019,8 @@ function paintFull() {  // (the full screen buttons and Back say what they'll do
   byId("pNativeFullscreen").innerHTML = (on ? GLYPH.fsExit : GLYPH.fsEnter) + (on ? "Exit full screen" : "Full screen");
   if (on) nativeNotice("");
 }
-["webkitbeginfullscreen", "webkitendfullscreen"].forEach((name) => vid.addEventListener(name, () => { savePos(true); paintFull(); }));
+["webkitbeginfullscreen", "webkitendfullscreen"].forEach((name) => vid.addEventListener(name, () => { savePos(true); syncLandscape(); paintFull(); }));
+document.addEventListener("visibilitychange", () => { if (document.hidden) releaseLandscape(); else syncLandscape(); });
 
 function openMenu(kind, btn, keys) {
   const m = byId("pMenu");
@@ -1128,6 +1209,7 @@ function paintWhere() {  // (the picture is elsewhere: the frame says where)
   const pip = inPip(), air = !!vid.webkitCurrentPlaybackTargetIsWireless;
   const restore = wasPip && !pip && playing && pl.classList.contains("hidden");
   wasPip = pip;
+  syncLandscape();
   pl.classList.toggle("pip", pip);
   pl.classList.toggle("air", air);
   byId("pPip").innerHTML = pip ? GLYPH.pipExit : GLYPH.pip;
@@ -1267,6 +1349,7 @@ vid.addEventListener("seeking", () => {
   if (!live()) return;
   const t = vid.currentTime, s = snap(t);
   if (s !== t) { vid.currentTime = s; return; }  // (the nested 'seeking' does the rest)
+  if (nativePlayer()) hintNativeSeek(t);
   const mine = seekMine;
   seekMine = false;
   if (mine && playing.stopped && hls) { playing.stopped = false; httpFail = null; try { hls.startLoad(); } catch (e) {} }  // (elsewhere: load again)
@@ -1568,6 +1651,7 @@ function route(back) {
     closeSheet(true, true);
     showPlayer();
     behind(true);
+    syncVersionFeeds();
     return;
   }
   const fromPlay = lastKey === "play";
@@ -1615,6 +1699,7 @@ function route(back) {
   else if (slideMQ.matches) { if (how === "push" || how === "pop") { barSoft = true; moveTo(how, outEl, leaveY, swap); } else { endMove(); swap(); } }
   else { barSoft = true; moveTo("fade", outEl, leaveY, swap); }
   behind(false);
+  syncVersionFeeds();
 }
 window.addEventListener("scroll", () => { lastInput = performance.now(); }, {passive: true});  // (a scroll only stamps the time: the
 window.addEventListener("hashchange", () => {

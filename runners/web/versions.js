@@ -1,8 +1,7 @@
 const SECT = {  // (the fleet's section names: a flat pictogram of the same thing, a word, a line on what it is)
-  "🎞 Original": ["Original", "Original video quality with a browser-ready container. Audio depends on the selected track.", "film", "orig"],
+  "🎞 Original": ["Original", "Original video without re-encoding, repackaged for the browser with lossless audio conversion.", "film", "orig"],
   "▶ As is": ["As is", "The source file, played directly without conversion.", "asis", "asis"],
   "🌐 Browser 1080p": ["Converted", "Converted to browser-friendly H.264 video and stereo audio.", "globe", "conv"],
-  "📄 Direct": ["External player", "Copy the untouched file link for a compatible external player, such as VLC or Infuse.", "raw", "direct"],
 };
 const sectOf = (name) => SECT[name] || [String(name).replace(/^[^A-Za-z0-9]+/, "") || "Versions", "", /Browser|onvert/.test(name) ? "globe" : "film", "other"];
 const sectLabel = (name) => ICON[sectOf(name)[2]] + esc(sectOf(name)[0]);
@@ -61,6 +60,7 @@ function verSize(info) {  // ("17.6 GB" first; then what the fleet says of it, b
 }
 const unfit = (s) => !!s.f && ((/\/orig\.m3u8/.test(s.url || "") && !s.f.o) || (!!s.apple && !s.f.a));  // (its probe showed it can't play here: see tor.py's facts_of)
 function sourceKind(s) { return sectOf((s.name || "").split("\n")[0]); }
+const playbackVersion = (s) => Object.prototype.hasOwnProperty.call(SECT, (s.name || "").split("\n")[0]);
 function versionBytes(s) {
   // The backend's size is the source file size, including for converted options.
   const hinted = (s.behaviorHints || {}).videoSize;
@@ -74,11 +74,11 @@ function versionBytes(s) {
   return Number.isFinite(bytes) && bytes > 0 ? bytes : null;
 }
 function sortedVersions(list, direction) {
-  const seen = new Set(), rank = {orig: 0, asis: 1, conv: 2, direct: 3, other: 4};
+  const seen = new Set(), rank = {orig: 0, asis: 1, conv: 2};
   return list.map((source, index) => ({source, index, bytes: versionBytes(source), kind: sourceKind(source)[3]}))
     .filter((item) => {
       const identity = item.kind + "|" + (item.source.url || "");
-      if (!item.source.url || seen.has(identity)) return false;
+      if (!playbackVersion(item.source) || !item.source.url || seen.has(identity)) return false;
       seen.add(identity);
       return true;
     }).sort((a, b) => {
@@ -103,21 +103,21 @@ function verWords(s) {
 }
 function versionPlayLabel(s) {
   const t = (s.title || "").split("\n");
-  const action = sourceKind(s)[3] === "direct" ? "Copy link for an external player" : "Play " + sourceKind(s)[0];
+  const action = "Play " + sourceKind(s)[0];
   return action + ": " + (t[0] || "this version") + (t[1] ? ", " + t[1].replace(/^💾\s*/, "") : "");
 }
 function versionFileUrl(s) { return new URL((s.download || s.url).replace("/dl/", "/file/"), location.href).href; }
 function verRow(s, onPick) {
-  const t = (s.title || "").split("\n"), d = document.createElement("div"), external = sourceKind(s)[3] === "direct";
+  const t = (s.title || "").split("\n"), d = document.createElement("div");
   d.className = "ver";
   d._source = s;
   if (s.k) d.dataset.k = s.k;
   d.dataset.kind = sourceKind(s)[3];
-  d.innerHTML = '<button class="vplay" type="button" aria-label="' + esc(versionPlayLabel(s)) + '"' + (external ? ' title="Copy link for an external player"' : '') + '><span class="vt"><span class="vk">' + verTop(s) +
-    '</span><span class="vs">' + verWords(s) + "</span>" + fileName(t[0] || "") + '</span><span class="go" aria-hidden="true">' + (external ? ICON.link : ICON.play) + '</span></button>' +
+  d.innerHTML = '<button class="vplay" type="button" aria-label="' + esc(versionPlayLabel(s)) + '"><span class="vt"><span class="vk">' + verTop(s) +
+    '</span><span class="vs">' + verWords(s) + "</span>" + fileName(t[0] || "") + '</span><span class="go" aria-hidden="true">' + ICON.play + '</span></button>' +
     (s.download ? '<button class="dl cp" type="button" title="Copy file link" aria-label="Copy file link">' + ICON.link + '</button>' +
       '<a class="dl" href="' + esc(s.download) + '" download title="Download source file" aria-label="Download source file">' + ICON.dl + '</a>' : "");
-  d.querySelector(".vplay").onclick = () => external ? copyUrl(versionFileUrl(s)) : onPick(s);
+  d.querySelector(".vplay").onclick = () => onPick(s);
   const copy = d.querySelector(".cp");
   if (copy) copy.onclick = () => copyUrl(versionFileUrl(s));
   return d;
@@ -178,6 +178,7 @@ function fitVersions(list) {  // (what this browser can play of the fleet's list
   const bad = store.get("unfit", {});
   factsIn(list);
   return list.filter((s) => {
+    if (!playbackVersion(s)) return false;
     if (s.apple && !applePlayer()) return false;
     if (s.apple) appleFiles.add(s.url);
     if (!s.apple && !/\/orig\.m3u8/.test(s.url || "")) return true;
@@ -186,9 +187,24 @@ function fitVersions(list) {  // (what this browser can play of the fleet's list
     return !x || (x.soft && Date.now() - x.at > 6048e5);
   });
 }
-const versionViews = new Map();
-function renderVersions(box, list, scroller, onPick, id) {
+const versionViews = new Map(), versionFeeds = new Map();
+function pauseVersionFeed(box, forget) {
   if (box.spy) { box.spy.disconnect(); box.spy = null; }
+  if (forget) versionFeeds.delete(box);
+}
+function visibleVersionFeed(box) {
+  const view = box.closest(".view");
+  return box.isConnected && !document.hidden && box.getClientRects().length > 0 && !box.closest('[aria-hidden="true"]') &&
+    (typeof lastKey === "undefined" || lastKey !== "play") && (!view || typeof lastView === "undefined" || view.id === lastView);
+}
+function syncVersionFeeds() {
+  versionFeeds.forEach((feed, box) => {
+    if (!box.isConnected) pauseVersionFeed(box, true);
+    else feed.watch();
+  });
+}
+function renderVersions(box, list, scroller, onPick, id) {
+  pauseVersionFeed(box, true);
   box.tok = null;
   if (box.pin) { if (pinIO) pinIO.unobserve(box.pin); box.pin = null; }
   if (!list) { box.innerHTML = loadingVersions(); box.setAttribute("aria-busy", "true"); return; }
@@ -201,50 +217,75 @@ function renderVersions(box, list, scroller, onPick, id) {
   const saved = store.get("source-sort", "largest");
   let order = saved === "smallest" ? "smallest" : "largest";
   let rows = sortedVersions(fitVersions(list), order);
-  box.innerHTML = '<div class="vtoolbar"><div class="vsummary"><strong>' + rows.length +
-    '</strong> playback option' + (rows.length === 1 ? "" : "s") + '</div><label class="vsort"><span>File size</span>' +
-    '<select aria-label="Sort playback options by file size"><option value="largest">Largest first</option><option value="smallest">Smallest first</option></select></label></div>' +
-    '<p class="vhint">Sizes refer to the source file. Playback type is shown on each option.</p><div class="vgroup" aria-label="Playback options"></div>';
-  const group = box.querySelector(".vgroup"), select = box.querySelector("select");
+  state.shown = Math.min(rows.length, Math.max(first, state.shown));
+  box.innerHTML = '<div class="vtoolbar" title="File sizes refer to the source file, including converted playback."><div class="vsummary" role="status" aria-live="polite" aria-atomic="true"></div>' +
+    '<label class="vsort"><span>Size</span><select aria-label="Sort playback options by file size"><option value="largest">Largest first</option><option value="smallest">Smallest first</option></select></label></div>' +
+    '<div class="vgroup" aria-label="Playback options"></div>';
+  const group = box.querySelector(".vgroup"), select = box.querySelector("select"), summary = box.querySelector(".vsummary");
+  const automatic = typeof IntersectionObserver === "function", tail = document.createElement(automatic ? "div" : "button");
+  tail.className = automatic ? "vmore-sentinel" : "vmore";
+  if (automatic) { tail.setAttribute("aria-hidden", "true"); tail.style.minHeight = "1px"; }
+  else { tail.type = "button"; tail.textContent = "Load more options"; }
   select.value = order;
+  const progress = () => {
+    summary.innerHTML = '<strong>' + state.shown + '</strong> of <strong>' + rows.length + '</strong> option' + (rows.length === 1 ? "" : "s");
+    if (state.shown < rows.length) group.appendChild(tail);
+    else tail.remove();
+  };
   const append = (start, end) => {
     const frag = document.createDocumentFragment();
     rows.slice(start, end).forEach((source) => frag.appendChild(verRow(source, onPick)));
     group.appendChild(frag);
   };
-  const moreButton = () => {
-    if (state.shown >= rows.length) return;
-    const more = document.createElement("button");
-    more.type = "button";
-    more.className = "vmore";
-    const count = Math.min(first, rows.length - state.shown);
-    more.innerHTML = "Show " + count + " more" + ICON.down;
-    more.onclick = () => {
-      const start = state.shown, keyboard = document.activeElement === more;
-      state.shown += count;
-      shieldOn(group);
-      more.remove();
-      append(start, state.shown);
-      moreButton();
-      fitNames(group);
-      if (keyboard) group.querySelectorAll(".vplay")[start]?.focus({preventScroll: true});
-    };
-    group.appendChild(more);
+  const more = (keyboard) => {
+    if (versionFeeds.get(box) !== feed || state.shown >= rows.length || !visibleVersionFeed(box)) return;
+    pauseVersionFeed(box);
+    const start = state.shown;
+    state.shown = Math.min(rows.length, state.shown + first);
+    tail.remove();
+    append(start, state.shown);
+    progress();
+    fitNames(group);
+    if (keyboard) group.querySelectorAll(".vplay")[start]?.focus({preventScroll: true});
+    feed.watch();
   };
+  const feed = {watch() {
+    if (!automatic || state.shown >= rows.length || !visibleVersionFeed(box) || !tail.isConnected) { pauseVersionFeed(box); return; }
+    if (box.spy) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (box.spy !== observer || versionFeeds.get(box) !== feed) return;
+      if (entries.some((entry) => entry.target === tail && entry.isIntersecting)) more(false);
+    }, {root: scroller || null, rootMargin: "0px 0px 600px 0px", threshold: 0});
+    box.spy = observer;
+    observer.observe(tail);
+  }};
+  versionFeeds.set(box, feed);
+  if (!automatic) tail.onclick = () => more(document.activeElement === tail);
+  group.addEventListener("focusin", (event) => {
+    // Keyboard and assistive-tech navigation also prepares the next rows before
+    // reaching the end, without taking focus away from the current control.
+    if (!automatic || state.shown >= rows.length) return;
+    const row = event.target.closest(".ver"), displayed = group.querySelectorAll(".ver");
+    if (row && Array.prototype.indexOf.call(displayed, row) >= displayed.length - 2) more(false);
+  });
   append(0, state.shown);
-  moreButton();
+  progress();
   fitNames(box);
+  feed.watch();
   select.onchange = () => {
+    pauseVersionFeed(box);
     order = select.value === "smallest" ? "smallest" : "largest";
     store.set("source-sort", order);
     rows = sortedVersions(fitVersions(list), order);
-    state.shown = first;
+    state.shown = Math.min(first, rows.length);
     group.replaceChildren();
     append(0, state.shown);
-    moreButton();
+    progress();
     fitNames(box);
+    feed.watch();
   };
 }
+
 function loadVersions(box, type, sid, count, scroller) {
   const id = type + "/" + sid;
   box.dataset.sid = sid;
@@ -258,7 +299,7 @@ function loadVersions(box, type, sid, count, scroller) {
     const list = sortedVersions(fitVersions(r.streams || []), store.get("source-sort", "largest"));
     if (count) byId("tCount").textContent = list.length || "";
     if (!list.length) {
-      if (box.spy) { box.spy.disconnect(); box.spy = null; }
+      pauseVersionFeed(box, true);
       box.tok = null;
       box.innerHTML = cuv(ICON.film, "No versions found", r.error ? "The fleet couldn't look just now." : "The fleet has nothing of this title yet.", r.error ? "Try again" : null);
       if (r.error) box.querySelector(".cuv .btn").onclick = () => { memo.delete(versionsUrl(type, sid)); loadVersions(box, type, sid, count, scroller); };
@@ -369,10 +410,12 @@ function openEpisode(season, episode) {
     behind(true);
     setTimeout(() => { if (sheet.classList.contains("open") && !sheet.contains(document.activeElement)) byId("shClose").focus({preventScroll: true}); }, 130);
   }
+  versionFeeds.get(list)?.watch();
   markEp();
 }
 function closeSheet(quiet, instant) {  // (quiet: the address already says so; else back to the season's page, as it was come from;
   const open = sheet.classList.contains("open");
+  pauseVersionFeed(byId("shList"));
   if (open && instant) { sheet.classList.add("now"); nextFrame(() => sheet.classList.remove("now")); }
   sheet.classList.remove("open");
   sheet.setAttribute("aria-hidden", "true");
@@ -452,3 +495,11 @@ shScroll.addEventListener("touchmove", (e) => {
 }, {passive: false});
 shScroll.addEventListener("touchend", () => { if (pull && pull.on && drag) dragEnd(); pull = null; }, {passive: true});
 shScroll.addEventListener("touchcancel", () => { if (pull && pull.on && drag) dragEnd(); pull = null; }, {passive: true});
+
+// Hash navigation changes the visible view after its handler runs. Release old
+// observers immediately, then re-arm only the connected, visible source list.
+window.addEventListener("hashchange", () => {
+  versionFeeds.forEach((feed, box) => pauseVersionFeed(box));
+  setTimeout(syncVersionFeeds, 0);
+});
+document.addEventListener("visibilitychange", syncVersionFeeds);

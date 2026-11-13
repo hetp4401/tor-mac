@@ -1,6 +1,6 @@
 // Frame keeps its interface available offline. Media, playlists, API responses
 // and signed source URLs always go directly to the network.
-const VERSION = "2026-11-13-frame-3";
+const VERSION = "2026-11-13-frame-4";
 // Keep the original cache lineage so existing installations migrate safely.
 const PAGE_CACHE = "fleet-shell-" + VERSION;
 const ASSET_CACHE = "fleet-assets-" + VERSION;
@@ -22,7 +22,7 @@ async function keep(cacheName, key, response) {
 }
 self.addEventListener("install", (event) => {
   // A new worker waits for an explicit update action; it never reloads playback.
-  event.waitUntil(Promise.all([PAGE, "/manifest.webmanifest", ...ICONS.map((path) => path + "?v=3")].map(async (path) => {
+  event.waitUntil(Promise.all([PAGE, "/manifest.webmanifest", ...ICONS.map((path) => path + "?v=4")].map(async (path) => {
     try {
       const response = await fetch(path, {cache: "reload"});
       await keep(path === PAGE ? PAGE_CACHE : ASSET_CACHE, path, response);

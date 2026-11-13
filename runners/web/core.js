@@ -298,8 +298,7 @@ function posterCard(m, i, eager) {  // (eager: the first screen's; the rest load
   a.appendChild(frame);
   const year = String(yearOf(m)).slice(0, 4), rating = Number(m.imdbRating);
   a.insertAdjacentHTML("beforeend", '<div class="catalog-caption"><b>' + esc(m.name || "Untitled") + '</b><span>' +
-    esc([year, m.type === "series" ? "Series" : "Movie"].filter(Boolean).join(" · ")) + '</span></div>');
-  if (rating > 0) frame.insertAdjacentHTML("beforeend", '<span class="poster-rating" aria-label="Rating ' + esc(rating) + ' out of 10">★ ' + esc(rating.toFixed(1)) + '</span>');
+    esc([year, rating > 0 ? "★ " + rating.toFixed(1) : ""].filter(Boolean).join(" · ")) + '</span></div>');
   return a;
 }
 function catalogRow(title, type, id, genre, now) {  // (still loading: flat blocks; then its first posters, all at once)
@@ -380,12 +379,11 @@ function paintHero(sec, m) {
   titleSlot(h.querySelector(".tslot"), m.id, m.name);
   h.querySelector(".meta").innerHTML = metaLine(m);
   h.querySelector(".desc").textContent = m.description || "";
-  h.querySelector(".hero-eyebrow").textContent = m.type === "series" ? "Featured series" : "Featured film";
   const w = h.querySelector(".hw"), d = h.querySelector(".hm");
   w.href = href + "?to=watch";
-  w.innerHTML = ICON.play + (m.type === "series" ? "Browse episodes" : "Watch options");
+  w.innerHTML = ICON.play + (m.type === "series" ? "Episodes" : "Watch");
   d.href = href;
-  d.innerHTML = ICON.info + "Details";
+  d.textContent = "Details";
   h.classList.remove("out");
 }
 let recentRaw = null, recentList = [];
