@@ -14,13 +14,21 @@ GET /healthz -> {ok, jobs, max, engine, host, draining}
 MAX_JOBS conversions at once; past that, 503 (the caller tries another Mac, or its own). On SIGTERM (the job hands over
 to the next Mac for its slot) it takes no more (503 "draining", said in /healthz too), finishes those under way, and
 stops."""
-import hmac, json, os, platform, select, signal, socket, subprocess, threading, time, urllib.parse
+import hmac, json, math, os, platform, select, signal, socket, subprocess, threading, time, urllib.parse
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from media_index import keyframes, NoIndex, SourceBroken
+from source_media import Source, SourceError, Relay
 
 PORT = int(os.environ.get("PORT", "8095"))
 KEY = os.environ.get("MAC_KEY", "")
 MAX_JOBS = int(os.environ.get("MAX_JOBS", "3"))
 MAX_BODY = 200 * 2**20
+MAX_JSON = 16 * 1024
+REVISION = os.environ.get("SOURCE_REVISION", "source-v1")
+PROBE_TTL = 600
+probe_cache = OrderedDict()
+probe_lock = threading.Lock()
 DRAIN_MAX = 120  # seconds the conversions under way are given to finish on SIGTERM
 TS_BASE = 10  # (as tor.py's)
 jobs = {"n": 0, "done": 0, "failed": 0, "ended": 0, "stuck": 0, "draining": False}
@@ -39,7 +47,7 @@ def engine():
 ENGINE = engine()
 
 
-def command(t, l, s, a, hdr, w, k=0):
+def command(t, l, s, a, hdr, w, k=0, input_url=None):
     end = t + l
     keys = f"expr:gte(t,n_forced*{k})" if k else "0"  # (the first frame's, and every k seconds of the piece)
     if ENGINE == "videotoolbox":
@@ -57,10 +65,88 @@ def command(t, l, s, a, hdr, w, k=0):
         vf = [f"trim=start={t:.3f}:end={end:.3f}"] + (["scale=1920:-2"] if w > 1920 else []) + ([tone] if hdr else []) + ["format=yuv420p"]
         inp = []
         venc = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-profile:v", "high", "-level", "4.1"]
-    return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + inp + ["-copyts", "-i", "pipe:0", "-map", "0:v:0"] +
+    # Input seeking is relative to the container start; -copyts then preserves
+    # original packet timestamps for the same trim/output offset as binary jobs.
+    # Input -t bounds demuxing too: a trim filter alone would read the whole film.
+    source_input = (["-ss", f"{max(0, t - s):.6f}", "-t", f"{l:.6f}", "-rw_timeout", "15000000", "-seekable", "1",
+                     "-protocol_whitelist", "http,tcp"] if input_url else [])
+    return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"] + inp + source_input + ["-copyts", "-i", input_url or "pipe:0", "-map", "0:v:0"] +
             (["-map", f"0:{a}", "-af", f"atrim=start={t:.3f}:end={end:.3f}", "-c:a", "aac", "-ac", "2", "-b:a", "192k"] if a >= 0 else []) +
             ["-vf", ",".join(vf)] + venc + ["-force_key_frames", keys, "-output_ts_offset", f"{TS_BASE - s:.3f}",
              "-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts", "pipe:1"])
+
+
+def source_options(value):
+    """Validate conversion options before constructing an ffmpeg command."""
+    try:
+        t, length = float(value["start"]), float(value["duration"])
+        s = float(value.get("source_start", 0))
+        audio, hdr, width = int(value.get("audio", -1)), int(value.get("hdr", 0)), int(value.get("width", 0))
+        spacing = float(value.get("segment_seconds", 0))
+    except (KeyError, ValueError, TypeError, OverflowError):
+        raise ValueError("invalid conversion settings") from None
+    if (not all(math.isfinite(v) for v in (t, length, s, spacing))
+            or abs(t) > 1e9 or abs(s) > 1e9 or not 0 < length <= 120
+            or not -1 <= audio <= 128 or hdr not in (0, 1) or not 0 <= width <= 32768
+            or not 0 <= spacing <= 120):
+        raise ValueError("conversion settings out of range")
+    return t, length, s, audio, hdr, width, spacing
+
+
+def cached_probe(source):
+    with probe_lock:
+        item = probe_cache.get(source.cache_key)
+        if item and time.monotonic() - item[0] < PROBE_TTL:
+            probe_cache.move_to_end(source.cache_key)
+            return item[1]
+        probe_cache.pop(source.cache_key, None)
+
+
+def probe(source, conn):
+    hit = cached_probe(source)
+    if hit is not None:
+        return hit
+    index = {}
+
+    def read_index():
+        try:
+            index["keyframes"] = keyframes(source)
+        except NoIndex:
+            index["keyframes"] = None
+        except SourceBroken:
+            index["keyframes"] = None
+            index["index_error"] = "source index exceeds the available file"
+        except (SourceError, IndexError, ValueError, OSError):
+            index["keyframes"] = None
+            index["index_error"] = "source keyframe index unavailable"
+
+    with Relay(source) as url:
+        index_thread = threading.Thread(target=read_index, daemon=True)
+        index_thread.start()
+        cmd = ["ffprobe", "-v", "error", "-rw_timeout", "15000000", "-protocol_whitelist", "http,tcp",
+               "-seekable", "1", "-show_format", "-show_streams", "-of", "json", url]
+        result = run(cmd, None, conn, timeout=90)
+        if result is None:
+            return None
+        code, data, _, late = result
+        if late or code or not data or len(data) > 2**20:
+            raise SourceError("source probe timed out" if late else "source probe failed")
+        try:
+            info = json.loads(data)
+        except ValueError:
+            raise SourceError("invalid source probe") from None
+        if not isinstance(info.get("streams"), list) or not isinstance(info.get("format"), dict):
+            raise SourceError("invalid source probe")
+        # FFprobe's filename is the short-lived loopback URL, never useful to a caller.
+        info["format"].pop("filename", None)
+        index_thread.join(30)
+        info.update(index if not index_thread.is_alive() else {"keyframes": None, "index_error": "source keyframe index timed out"})
+    with probe_lock:
+        probe_cache[source.cache_key] = (time.monotonic(), info)
+        probe_cache.move_to_end(source.cache_key)
+        while len(probe_cache) > 64:
+            probe_cache.popitem(last=False)
+    return info
 
 
 def gone(conn):
@@ -135,15 +221,22 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/healthz":
             return self.send(200, {"ok": True, "slot": os.environ.get("SLOT"), "jobs": jobs["n"], "max": MAX_JOBS, "engine": ENGINE, "host": socket.gethostname(),
                                    "draining": jobs["draining"], "done": jobs["done"], "failed": jobs["failed"], "ended": jobs["ended"], "stuck": jobs["stuck"],
-                                   "recent": recent[-8:]})
+                                   "recent": recent[-8:], "capabilities": ["source-v1"], "revision": REVISION})
         self.send(404, {"error": "not here"})
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
-        if u.path != "/convert":
+        if u.path not in ("/convert", "/probe"):
+            self.close_connection = True
             return self.send(404, {"error": "not here"})
         if not KEY or not hmac.compare_digest(self.headers.get("X-Mac-Key") or "", KEY):
+            self.close_connection = True
             return self.send(403, {"error": "key"})
+        if self.headers.get("Content-Type", "").split(";")[0].strip().lower() == "application/json":
+            return self.source_job(u.path)
+        if u.path == "/probe":
+            self.close_connection = True
+            return self.send(415, {"error": "probe requires application/json"})
         q = urllib.parse.parse_qs(u.query)
         try:
             t, l, s = float(q["t"][0]), float(q["l"][0]), float((q.get("s") or ["0"])[0])
@@ -192,6 +285,75 @@ class Handler(BaseHTTPRequestHandler):
             del recent[:-50]
             self.send(200, data, "video/mp2t")
         finally:
+            with lock:
+                jobs["n"] -= 1
+
+    def source_job(self, path):
+        """A source stays on Runners; this Mac probes, seeks and converts it."""
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            if not 0 < size <= MAX_JSON or self.headers.get("Transfer-Encoding"):
+                raise ValueError("a JSON body of up to 16 KB is required")
+            raw = self.rfile.read(size)
+            if len(raw) != size:
+                self.close_connection = True
+                return
+            value = json.loads(raw)
+            if not isinstance(value, dict):
+                raise ValueError("a JSON object is required")
+            source = Source(value.get("source"))
+            options = source_options(value) if path == "/convert" else None
+            waits = value.get("priority", 1) == 0
+        except (ValueError, TypeError, OSError) as err:
+            self.close_connection = True
+            # JSON/Unicode parsers can quote input. Validation messages are fixed;
+            # the response never includes raw JSON or a bearer token.
+            message = str(err) if isinstance(err, SourceError) else "invalid media job"
+            return self.send(400, {"error": message})
+        with lock:
+            busy = "draining" if jobs["draining"] else "busy" if jobs["n"] >= MAX_JOBS + (1 if waits else 0) else None
+            if not busy:
+                jobs["n"] += 1
+        if busy:
+            return self.send(503, {"error": busy})
+        t0 = time.monotonic()
+        try:
+            if path == "/probe":
+                info = probe(source, self.connection)
+                if info is None:
+                    jobs["ended"] += 1
+                    self.close_connection = True
+                    return
+                self.send(200, info)
+                return
+            with Relay(source) as url:
+                out = run(command(*options, input_url=url), None, self.connection)
+            if out is None:
+                jobs["ended"] += 1
+                self.close_connection = True
+                return
+            code, data, _, late = out
+            if late:
+                raise SourceError("conversion exceeded 120 seconds")
+            if code or not data:
+                raise SourceError("source conversion failed")
+            jobs["done"] += 1
+            recent.append({"at": int(time.time()), "mode": "source-v1", "in_mb": round(source.bytes / 1e6, 2),
+                           "source_requests": source.requests, "upload_s": 0, "convert_s": round(time.monotonic() - t0, 2),
+                           "out_mb": round(len(data) / 1e6, 2), "waits": waits})
+            del recent[:-50]
+            self.send(200, data, "video/mp2t")
+        except SourceError as err:
+            jobs["failed"] += 1
+            self.send(502, {"error": str(err)})
+        except (OSError, ValueError, KeyError):
+            jobs["failed"] += 1
+            self.close_connection = True
+            # Sources and subprocess diagnostics are intentionally not echoed.
+            with __import__("contextlib").suppress(OSError):
+                self.send(500, {"error": "media processing failed"})
+        finally:
+            source.stop.set()
             with lock:
                 jobs["n"] -= 1
 

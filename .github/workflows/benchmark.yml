@@ -1,0 +1,38 @@
+name: isolated source benchmark
+run-name: isolated Mac source benchmark
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: isolated-source-benchmark
+  cancel-in-progress: false
+jobs:
+  benchmark:
+    runs-on: macos-15
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: install media tools
+        run: |
+          brew install ffmpeg cloudflared > /tmp/benchmark-brew.log 2>&1 || { tail -30 /tmp/benchmark-brew.log; exit 1; }
+          ffmpeg -hide_banner -encoders | grep h264_videotoolbox
+      - name: isolated slot 4 worker for paired measurements
+        env:
+          MAC_KEY: ${{ secrets.MAC_KEY }}
+          SLOT_TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN_4 }}
+          SOURCE_REVISION: ${{ github.sha }}
+          SLOT: benchmark
+          MAX_JOBS: "1"
+        run: |
+          python3 mac.py > /tmp/benchmark-mac.log 2>&1 &
+          SVC=$!
+          CF=""
+          cleanup() { if [ -n "$CF" ]; then kill -TERM "$CF" 2>/dev/null || true; fi; kill -TERM "$SVC" 2>/dev/null || true; }
+          trap cleanup EXIT INT TERM
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/healthz >/dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8095/healthz
+          cloudflared tunnel --no-autoupdate --grace-period 30s run --token "$SLOT_TUNNEL_TOKEN" >/tmp/benchmark-cf.log 2>&1 &
+          CF=$!
+          # This job never joins the shared tunnel, never takes slots 1-3, and never replaces itself.
+          sleep 3300
