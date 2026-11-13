@@ -54,6 +54,10 @@ python3 runners/deploy.py --expect-version <current-version> --apply
 
 A concurrent app version change causes the command to stop. To opt into the full source-processing path, use `--mode source` with the current version. Deployment credentials are never printed.
 
+Cold probing publishes the initial source download in 256 KiB chunks so metadata readers can begin before an entire 8 MiB video block arrives. Matroska index reads use at most eight small metadata windows, validate byte ranges, and fall back to the existing block reader for incompatible origins. Complete video blocks and converted output keep their existing caches. Set `TOR_PROBE_WINDOWS=0` to disable the metadata windows. Worker health and connection setup begins alongside probing for locally owned converted playback.
+
+A seek promotes the queued source read that owns its requested bytes, including a block reserved later in an existing batch. This prevents background read admission from holding up its own foreground consumer. Promotion retains the existing concurrency limits and shares the original download.
+
 ## Jobs and testing
 
 `.github/workflows/macs.yml` keeps three Macs serving; the fourth Mac slot is available for other work. Each job requests a replacement before its six-hour limit and drains after a fixed handover wait. A scheduled keeper checks every 30 minutes for missing slots. Secrets: `MAC_KEY`, the shared `TUNNEL_TOKEN`, and `TUNNEL_TOKEN_1` through `_4` for individual slots. `SOURCE_REVISION` identifies the running commit.

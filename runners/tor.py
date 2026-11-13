@@ -164,7 +164,7 @@ class Pool:
         self.idle = collections.defaultdict(list)
         self.lock = threading.Lock()
 
-    def request(self, method, url, body=None, headers=None, timeout=10, hold=None):
+    def request(self, method, url, body=None, headers=None, timeout=10, hold=None, limit=None):
 
 
 
@@ -203,10 +203,14 @@ class Pool:
                 r = c.getresponse()
                 if hold is not None:
                     hold["headers"] = time.time()
-                data = r.read()
+                if limit is not None and (r.getheader("Content-Length") or "").isdigit() and int(r.getheader("Content-Length")) > limit:
+                    raise http.client.HTTPException("response exceeds its byte limit")
+                data = r.read() if limit is None else r.read(limit + 1)
+                if limit is not None and len(data) > limit:
+                    raise http.client.HTTPException("response exceeds its byte limit")
                 if hold is not None:
                     hold["read"] = time.time()
-            except (http.client.HTTPException, OSError) as err:
+            except (http.client.HTTPException, OSError, ValueError) as err:
                 c.close()
                 if fresh or attempt or (hold is not None and (hold.get("ended") or isinstance(err, TimeoutError))):
                     raise
@@ -1677,6 +1681,7 @@ MUXED = os.environ.get("MUXED_AUDIO") == "1"
 
 
 SRC_BLOCK = int(float(os.environ.get("SRC_BLOCK_MB", "8")) * 2**20)
+PROBE_WINDOWS = os.environ.get("TOR_PROBE_WINDOWS", "1") == "1"
 SRC_ASKS = int(os.environ.get("SRC_ASKS", "6"))
 
 SEND_MAX = 16
@@ -1919,6 +1924,7 @@ def src_find(key):
             return m
         u = urllib.parse.urlsplit(url)
         c = (http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection)(u.netloc, timeout=60)
+        span = None
         try:
             t1 = time.time()
             c.request("GET", u.path + (f"?{u.query}" if u.query else ""), headers={"Range": f"bytes=0-{SRC_BLOCK - 1}", "User-Agent": "Mozilla/5.0"})
@@ -1927,18 +1933,33 @@ def src_find(key):
                 raise RuntimeError(f"the source answered HTTP {r.status} for a range")
             size = int(r.getheader("Content-Range").split("/")[1])
             m.update(url=url, size=size, t=time.time())
+            # Metadata readers only need a prefix. Publish the existing 8MiB
+            # first-block transfer in small chunks instead of hiding it until EOF.
+            span = land_span(0, min(SRC_BLOCK, size))
+            span["m"] = None
+            with hls_lock:
+                previous = land_reads.get(key)
+                if previous is None or previous.get("over"):
+                    land_reads.pop(key, None)
+                    land_reads[key] = span
+                    while len(land_reads) > 4:
+                        del land_reads[next(iter(land_reads))]
             known.at = time.time()
             known.set()
             if c.sock is not None:
                 c.sock.settimeout(30)
             try:
-                data = r.read(min(SRC_BLOCK, size))
-                if len(data) == min(SRC_BLOCK, size):
-                    bstats["vps"].append((time.time(), time.time() - t1, len(data), True))
-                    keep_block(key, 0, data)
+                for _ in land_take(key, r, span, [0], size, True, t1):
+                    pass
             except (http.client.HTTPException, OSError):
-                pass
+                span["err"] = "the initial source range was interrupted"
         finally:
+            if span is not None:
+                with span["cv"]:
+                    span["over"] = True
+                    if span["got"] < span["e"] - span["s"] and not span.get("err"):
+                        span["err"] = "the initial source range was cut short"
+                    span["cv"].notify_all()
             c.close()
             with hls_lock:
                 ev = unclaim(key, 0)
@@ -1952,7 +1973,7 @@ def src_find(key):
         raise
 
 
-def once(kind, key, n, make):
+def once(kind, key, n, make, waiting=None):
 
     k = (kind, key, n)
     with hls_lock:
@@ -1961,7 +1982,13 @@ def once(kind, key, n, make):
         if first:
             ev = busy[k] = threading.Event()
     if not first:
-        ev.wait(600)
+        if waiting is None:
+            ev.wait(600)
+        else:
+            until = time.monotonic() + 600
+            while not ev.is_set() and time.monotonic() < until:
+                waiting()  # Outside hls_lock; ownership is already established.
+                ev.wait(min(0.5, max(0.0, until - time.monotonic())))
         return None
     try:
         return make()
@@ -2074,7 +2101,7 @@ def from_player(key, n):
 
 
 @contextlib.contextmanager
-def upstream_turn(key, b, n, urgent, count=1):
+def upstream_turn(key, b, n, urgent, count=1, claims=None):
 
 
 
@@ -2089,6 +2116,13 @@ def upstream_turn(key, b, n, urgent, count=1):
     with turns:
         w = up_wait[k] = {"urgent": urgent, "n": n, "light": not urgent and key in facts_gentle}
         while k not in reading and k not in src_blocks:
+            # A foreground request may arrive before this queue entry exists,
+            # or target a later block already reserved by this batch.
+            demands = [busy.get(("src", key, b))]
+            demands.extend(ev for nb, ev in (claims or {}).items() if reading.get((key, nb)) is ev)
+            for ev in demands:
+                if ev is not None and hasattr(ev, "n") and (not w["urgent"] or from_player(key, ev.n) < from_player(key, w["n"])):
+                    w.update(urgent=True, n=ev.n)
             now = time.time()
             if w["urgent"]:
                 d = from_player(key, w["n"])
@@ -2111,7 +2145,7 @@ def upstream_turn(key, b, n, urgent, count=1):
         elif kind == "urgent":
             up_going[k] = w["n"]
     try:
-        yield kind
+        yield kind, w["urgent"], w["n"]
     finally:
         if kind:
             with turns:
@@ -2157,9 +2191,10 @@ def up_hurry(key, b, n):
         if w and (not w["urgent"] or (n is not None and w["n"] is not None and from_player(key, n) < from_player(key, w["n"]))):
             w.update(urgent=True, n=n)
             turns.notify_all()
-        ev = reading.get((key, b))
-        if ev is not None and from_player(key, n) < from_player(key, getattr(ev, "n", 10**9)):
-            ev.n = n
+        for ev in {reading.get((key, b)), busy.get(("src", key, b))} - {None}:
+            if from_player(key, n) < from_player(key, getattr(ev, "n", 10**9)):
+                ev.n = n
+                turns.notify_all()
 
 
 @contextlib.contextmanager
@@ -2192,15 +2227,18 @@ def src_block(key, b, urgent=True, n=None):
     here = reader in (None, REPLICA)
     urgent = urgent and key not in facts_gentle
     tried = False
+
+    def hurry():
+        up_hurry(key, b, n)
+        if from_player(key, n) <= HEAD_ALONE:
+            for run in [r for r in list(runs.values()) if r["key"] == key and r["bg"] and b in r["left"]]:
+                end_call(run)
+
     while data is None:
         if urgent and here:
             if tried and far(key, n):
                 raise Dropped(f"the source's block {b}: for a piece no longer wanted")
-            up_hurry(key, b, n)
-            if (key, b) in reading and from_player(key, n) <= HEAD_ALONE:
-
-                for run in [r for r in list(runs.values()) if r["key"] == key and r["bg"] and b in r["left"]]:
-                    end_call(run)
+            hurry()
         tried = True
 
         def fetch():
@@ -2235,7 +2273,7 @@ def src_block(key, b, urgent=True, n=None):
             if data is None:
                 raise (Dropped if result.get("dropped") else RuntimeError)(result.get("err") or f"the source's block {b}: not read")
             return data
-        data = once(fetch_kind(key, urgent), key, b, fetch) or block_cached(key, b)
+        data = once(fetch_kind(key, urgent), key, b, fetch, hurry if urgent and here else None) or block_cached(key, b)
     return data
 
 
@@ -2383,7 +2421,8 @@ def read_run(key, blocks, urgent, n, arrived, result, span=None):
             with hls_lock:
                 if claims.get(left[0]) is not None and reading.get((key, left[0])) is claims[left[0]]:
                     del reading[(key, left[0])]
-            with upstream_turn(key, left[0], n, urgent, len(left) if urgent else BG_RUN) as went:
+            with upstream_turn(key, left[0], n, urgent, len(left) if urgent else BG_RUN, claims) as (went, urgent, n):
+                head = urgent and from_player(key, n) <= 1
                 if not went:
                     ev = reading.get((key, left[0]))
                     if ev:
@@ -2708,7 +2747,8 @@ def probe_now(key):
         raise RuntimeError(f"gdrive can't get this file right now ({found.get('err') or 'no answer'}): pick another version") from None
     t0 = min(t0, found["at"])
     t1 = time.time()
-    probe_blocks(key)
+    if not PROBE_WINDOWS:
+        probe_blocks(key)
     got = {}
 
     def index():
@@ -2719,6 +2759,7 @@ def probe_now(key):
                 probe_blocks(key, got["kf"])
                 return
             except NoIndex as err:
+                probe_blocks(key)
                 got["kf"] = None
                 log(f"hls {key}: no keyframe index ({err}): pieces every {PIECE_S:g} s")
                 return
@@ -3006,10 +3047,62 @@ class SourceBroken(Exception):
     """A source that can't play: a file TorBox has only part of, say."""
 
 
+def probe_reader(key, head):
+    """Read small metadata windows without fetching whole video blocks."""
+    if not PROBE_WINDOWS:
+        return lambda start, n: src_read(key, start, n)
+    windows = collections.OrderedDict([(0, head)])
+    failed = False
+
+    def read(start, n):
+        nonlocal failed
+        if failed:
+            return src_read(key, start, n)
+        meta = src_meta.get(key) or {}
+        size, url = meta.get("size"), meta.get("url")
+        if not isinstance(size, int) or size <= 0 or not isinstance(url, str) or not url:
+            failed = True
+            return src_read(key, start, n)
+        end, at, parts = min(size, start + n), start, []
+        try:
+            while at < end:
+                data = block_cached(key, at // SRC_BLOCK)
+                base = at // SRC_BLOCK * SRC_BLOCK
+                if data is None:
+                    hit = next(((a, data) for a, data in reversed(windows.items()) if a <= at < a + len(data)), None)
+                    if hit is not None:
+                        base, data = hit
+                        windows.move_to_end(base)
+                    else:
+                        base, stop = at, min(size, at + 256 * 1024)
+                        st, headers, data = conns.request("GET", url,
+                            headers={"Range": f"bytes={base}-{stop - 1}"}, timeout=15, limit=stop - base)
+                        content_range = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", headers.get("Content-Range") or "", re.I)
+                        if (st != 206 or content_range is None or tuple(map(int, content_range.groups())) != (base, stop - 1, size)
+                                or len(data) != stop - base):
+                            raise http.client.HTTPException("invalid metadata range")
+                        windows[base] = data
+                        while len(windows) > 8:
+                            windows.popitem(last=False)
+                part = data[at - base:min(end, base + len(data)) - base]
+                if not part:
+                    raise http.client.HTTPException("empty metadata range")
+                parts.append(part)
+                at += len(part)
+            return b"".join(parts)
+        except (http.client.HTTPException, OSError, ValueError):
+            # Some origins have unusual range behavior. Preserve the proven
+            # block reader for this probe without retrying the fast path.
+            failed = True
+            return src_read(key, start, n)
+    return read
+
+
 def mkv_keyframes(key):
 
 
     head = src_read(key, 0, 256 * 1024)
+    read = probe_reader(key, head)
     seg = next((a for eid, a, _ in ebml(head, 0, len(head)) if eid == 0x18538067), None)
     if seg is None:
         raise NoIndex("not a Matroska file")
@@ -3019,7 +3112,7 @@ def mkv_keyframes(key):
         if at in seen or len(seen) > 4:
             continue
         seen.add(at)
-        buf, off = (head, at) if at + 65536 <= len(head) else (src_read(key, at, 65536), 0)
+        buf, off = (head, at) if at + 65536 <= len(head) else (read(at, 65536), 0)
         for eid, a, b in ebml(buf, off, len(buf)):
             if eid == 0x1F43B675:
                 break
@@ -3046,10 +3139,10 @@ def mkv_keyframes(key):
         size = src_lookup(key)["size"]
         if where[eid] >= size:
             raise SourceBroken(f"the file is cut short: {size / 1e9:.1f} GB of it, its index at {where[eid] / 1e9:.1f} GB")
-        hdr = src_read(key, where[eid], 16)
+        hdr = read(where[eid], 16)
         _, a, _ = ebml_vint(hdr, 0, True)
         size, b, unknown = ebml_vint(hdr, a, False)
-        return src_read(key, where[eid] + a + b, cap if unknown else min(size, cap))
+        return read(where[eid] + a + b, cap if unknown else min(size, cap))
 
     def uint(buf, a, b):
         return int.from_bytes(buf[a:b], "big")
@@ -4099,6 +4192,9 @@ def warm_film(token, full=True):
         return
     if reader_of(key) not in (None, REPLICA) or claim_reader(key) != REPLICA:
         return
+    # Complete worker health/TLS setup while the source metadata is being read.
+    # mac_check starts its watcher asynchronously; no network wait is added here.
+    mac_check()
     src_meta[key]["warm"] = time.time()
     first_pieces(key, probe_source(key), False, False)
 
@@ -6493,6 +6589,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(503, {"error": f"the reader, copy {reader}: {err}"}, extra={"Cache-Control": "no-store"})
             return self.send(st if st < 500 else 503, body, h.get("Content-Type") or "application/vnd.apple.mpegurl", extra={"Cache-Control": "no-store"})
         src_meta[key]["reader"] = REPLICA
+        if master and not orig:
+            # Reuse a worker health connection for the first upload, overlapping
+            # DNS/TCP/TLS with probing and the player's playlist requests.
+            mac_check()
         facts_urgent(key)
         for attempt in range(3):
             try:

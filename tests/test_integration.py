@@ -25,7 +25,7 @@ WORKER = 'https://mac-1.example.test'
 
 
 def load():
-    names = {'mac_source', 'mac_source_grant', 'mac_source_workers', 'mac_probe_source', 'mac_call', 'mac_race', 'mac_audio_source', 'audio_make', 'audio_run', 'Handler'}
+    names = {'mac_source', 'mac_source_grant', 'mac_source_workers', 'mac_probe_source', 'mac_call', 'mac_race', 'mac_audio_source', 'audio_make', 'audio_run', 'warm_film', 'mac_check', 'Handler'}
     tree = ast.parse((HERE.parent / 'runners' / 'tor.py').read_text())
     selected = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names]
     assert {n.name for n in selected} == names
@@ -333,6 +333,91 @@ class AudioContractTests(unittest.TestCase):
         result = self.ns['audio_run'](KEY, [0, 1], 3)
         self.assertEqual(result, {0: b'\x00\x01', 1: b'\x01\x01'})
         self.assertEqual([r[0] for r in saved], [KEY + ':ca3', KEY + ':ca3'])
+
+
+class WorkerPreconnectTests(unittest.TestCase):
+    class ProbeReached(BaseException):
+        pass
+
+    def setUp(self):
+        self.ns = load()
+        self.events = []
+        self.real_mac_check = self.ns['mac_check']
+        self.ns.update({
+            'open_token': lambda token: (KEY, 'fixture'),
+            'reader_of': lambda key: self.ns['REPLICA'],
+            'claim_reader': lambda key: self.ns['REPLICA'],
+            'mac_check': lambda: self.events.append('preconnect'),
+            'facts_urgent': lambda key: self.events.append('urgent'),
+            'SourceBroken': type('SourceBroken', (Exception,), {}),
+            'probed': {KEY: {}},
+            'first_pieces': lambda *args: self.events.append('pieces'),
+            'src_lookup': lambda key: self.events.append('lookup'),
+        })
+        def probe(key):
+            self.events.append('probe')
+            raise self.ProbeReached()
+        self.ns['probe_source'] = probe
+        self.handler = self.ns['Handler'].__new__(self.ns['Handler'])
+        self.handler.headers = {}
+        self.handler.send = lambda *args, **kwargs: self.events.append('response')
+
+    def test_worker_warmup_is_nonblocking_and_deduplicated(self):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        starts = []
+        def watch():
+            starts.append(1)
+            entered.set()
+            release.wait(2)
+            finished.set()
+        self.ns.update({'mac_watch': watch, 'mac_looked': {'at': 0, 'busy': False},
+                        'MAC_URLS': [WORKER], 'macs': {WORKER: {'up': True, 'health': None}}})
+        try:
+            start = time.monotonic()
+            self.assertEqual(self.real_mac_check(), [WORKER])
+            self.assertLess(time.monotonic() - start, .2)
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(finished.is_set())
+            self.real_mac_check()
+            self.assertEqual(starts, [1])
+        finally:
+            release.set()
+            finished.wait(1)
+
+    def test_local_converted_master_starts_worker_before_probe(self):
+        with self.assertRaises(self.ProbeReached):
+            self.handler.hls_lists('fixture', 'index', {})
+        self.assertLess(self.events.index('preconnect'), self.events.index('probe'))
+        self.assertEqual(self.events.count('preconnect'), 1)
+
+    def test_original_and_child_playlists_do_not_start_worker(self):
+        for playlist in ['orig', 'cmedia']:
+            self.events.clear()
+            with self.assertRaises(self.ProbeReached):
+                self.handler.hls_lists('fixture', playlist, {})
+            self.assertNotIn('preconnect', self.events)
+
+    def test_forwarded_playback_does_not_warm_local_workers(self):
+        self.ns['reader_of'] = lambda key: self.ns['REPLICA'] + 1
+        class Connection:
+            def request(self, *args, **kwargs):
+                return 200, {'Content-Type': 'application/vnd.apple.mpegurl'}, b'playlist'
+        self.ns['conns'] = Connection()
+        self.handler.hls_lists('fixture', 'index', {})
+        self.assertEqual(self.events, ['response'])
+
+    def test_full_owned_warm_overlaps_worker_setup_and_probe(self):
+        with self.assertRaises(self.ProbeReached):
+            self.ns['warm_film']('fixture', True)
+        self.assertEqual(self.events, ['preconnect', 'probe'])
+
+    def test_lookup_only_and_remote_warm_do_not_start_worker(self):
+        self.ns['warm_film']('fixture', False)
+        self.assertEqual(self.events, ['lookup'])
+        self.events.clear()
+        self.ns['reader_of'] = lambda key: self.ns['REPLICA'] + 1
+        self.ns['warm_film']('fixture', True)
+        self.assertEqual(self.events, [])
 
 
 if __name__ == '__main__':
