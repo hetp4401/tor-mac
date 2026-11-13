@@ -1,0 +1,1137 @@
+{
+  "ready": true,
+  "error": null,
+  "run": "complete",
+  "rows": [
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 1.214,
+      "runners_prep_s": 0.0019,
+      "runners_python_cpu_s": 0.0019,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.212,
+      "headers_s": 1.0915,
+      "upload_bytes": 289218,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 1.3153,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 47152500,
+      "http_s": 1.3152,
+      "headers_s": 1.2051,
+      "upload_bytes": 365,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.9058,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 48471442,
+      "http_s": 0.9057,
+      "headers_s": 0.8708,
+      "upload_bytes": 365,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.6547,
+      "runners_prep_s": 0.0014,
+      "runners_python_cpu_s": 0.0014,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.6532,
+      "headers_s": 0.6296,
+      "upload_bytes": 289218,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.66,
+      "runners_prep_s": 0.001,
+      "runners_python_cpu_s": 0.001,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.6589,
+      "headers_s": 0.6227,
+      "upload_bytes": 289218,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 1.2056,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 47816082,
+      "http_s": 1.2055,
+      "headers_s": 1.174,
+      "upload_bytes": 365,
+      "output_bytes": 683004,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.5472,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 42472808,
+      "http_s": 1.5471,
+      "headers_s": 1.5118,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.1615,
+      "runners_prep_s": 0.0076,
+      "runners_python_cpu_s": 0.0076,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.1538,
+      "headers_s": 1.1282,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.1876,
+      "runners_prep_s": 0.006,
+      "runners_python_cpu_s": 0.006,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.1815,
+      "headers_s": 1.1567,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 2.0941,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 40449380,
+      "http_s": 2.094,
+      "headers_s": 2.0689,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.4446,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 42472808,
+      "http_s": 1.4445,
+      "headers_s": 1.4199,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 0.787,
+      "runners_prep_s": 0.0072,
+      "runners_python_cpu_s": 0.0072,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.7798,
+      "headers_s": 0.7582,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.133,
+      "runners_prep_s": 0.0071,
+      "runners_python_cpu_s": 0.0071,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.1258,
+      "headers_s": 1.1036,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.512,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 28603774,
+      "http_s": 1.5119,
+      "headers_s": 1.4882,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.5269,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 42472808,
+      "http_s": 1.5268,
+      "headers_s": 1.5054,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 0.9337,
+      "runners_prep_s": 0.0074,
+      "runners_python_cpu_s": 0.0074,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.9262,
+      "headers_s": 0.8986,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 0.8344,
+      "runners_prep_s": 0.0071,
+      "runners_python_cpu_s": 0.0071,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.8272,
+      "headers_s": 0.8019,
+      "upload_bytes": 1562051,
+      "output_bytes": 691840,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.5709,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 38155620,
+      "http_s": 1.5708,
+      "headers_s": 1.5489,
+      "upload_bytes": 366,
+      "output_bytes": 690900,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1280,
+          "height": 720,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.9443,
+      "runners_prep_s": 0.001,
+      "runners_python_cpu_s": 0.001,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.9432,
+      "headers_s": 0.8835,
+      "upload_bytes": 386371,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.9641,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 61174022,
+      "http_s": 0.964,
+      "headers_s": 0.9365,
+      "upload_bytes": 365,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.8881,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 57750180,
+      "http_s": 0.888,
+      "headers_s": 0.8607,
+      "upload_bytes": 365,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.6793,
+      "runners_prep_s": 0.0009,
+      "runners_python_cpu_s": 0.0009,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.6783,
+      "headers_s": 0.6323,
+      "upload_bytes": 386371,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.7256,
+      "runners_prep_s": 0.0009,
+      "runners_python_cpu_s": 0.0009,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.7246,
+      "headers_s": 0.6969,
+      "upload_bytes": 386371,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "startup",
+      "segment": 0,
+      "start_s": 0.0,
+      "length_s": 1.0,
+      "total_s": 0.9986,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 57831686,
+      "http_s": 0.9985,
+      "headers_s": 0.9703,
+      "upload_bytes": 365,
+      "output_bytes": 1158080,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "10.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.623,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 48217432,
+      "http_s": 1.6229,
+      "headers_s": 1.5919,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.1879,
+      "runners_prep_s": 0.0119,
+      "runners_python_cpu_s": 0.0119,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.1759,
+      "headers_s": 1.1356,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.0781,
+      "runners_prep_s": 0.0081,
+      "runners_python_cpu_s": 0.0081,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.0699,
+      "headers_s": 1.0231,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.8575,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 49200472,
+      "http_s": 1.8575,
+      "headers_s": 1.8208,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.8171,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 50311700,
+      "http_s": 1.817,
+      "headers_s": 1.7873,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "seek",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.0953,
+      "runners_prep_s": 0.0098,
+      "runners_python_cpu_s": 0.0098,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.0854,
+      "headers_s": 1.0509,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.1386,
+      "runners_prep_s": 0.0095,
+      "runners_python_cpu_s": 0.0095,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.129,
+      "headers_s": 1.0859,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.8341,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 50117976,
+      "http_s": 1.834,
+      "headers_s": 1.549,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.5752,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 48036794,
+      "http_s": 1.5751,
+      "headers_s": 1.5468,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 0.9553,
+      "runners_prep_s": 0.0096,
+      "runners_python_cpu_s": 0.0096,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 0.9456,
+      "headers_s": 0.9194,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.1048,
+      "runners_prep_s": 0.0094,
+      "runners_python_cpu_s": 0.0094,
+      "source_requests": 0,
+      "source_bytes": 0,
+      "http_s": 1.0953,
+      "headers_s": 1.0489,
+      "upload_bytes": 2200092,
+      "output_bytes": 1190604,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "repeat",
+      "segment": 37,
+      "start_s": 37.0,
+      "length_s": 1.0,
+      "total_s": 1.6775,
+      "runners_prep_s": 0.0,
+      "runners_python_cpu_s": 0.0,
+      "source_requests": 4,
+      "source_bytes": 41794904,
+      "http_s": 1.6774,
+      "headers_s": 1.6503,
+      "upload_bytes": 366,
+      "output_bytes": 1189664,
+      "http_status": 200,
+      "validation": {
+        "video": {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "start_time": "47.041667"
+        },
+        "duration_s": null
+      }
+    }
+  ],
+  "started_at": 1794550985.871781,
+  "probes": [
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "wall_s": 0.05703484100001788,
+      "python_cpu_s": 0.0013617599999999896,
+      "keyframes": 6,
+      "source_bytes": 17022950,
+      "source_duration_s": 60.021,
+      "probe_plus_first_segment_s": 1.271
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "http_s": 1.3139233699999977,
+      "headers_s": 1.31377253200003,
+      "upload_bytes": 239,
+      "output_bytes": 2463,
+      "http_status": 200,
+      "source_bytes": 10617282,
+      "source_requests": 8,
+      "probe_plus_first_segment_s": 2.6292
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "wall_s": 0.050962418999915826,
+      "python_cpu_s": 0.0009005820000000941,
+      "keyframes": 6,
+      "source_bytes": 21708386,
+      "source_duration_s": 60.021,
+      "probe_plus_first_segment_s": 0.9953
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "http_s": 0.7947757100000672,
+      "headers_s": 0.7946221490000198,
+      "upload_bytes": 239,
+      "output_bytes": 2533,
+      "http_status": 200,
+      "source_bytes": 15338282,
+      "source_requests": 8,
+      "probe_plus_first_segment_s": 1.7589
+    }
+  ],
+  "summary": [
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "startup",
+      "n": 3,
+      "median_s": 0.66,
+      "min_s": 0.6547,
+      "max_s": 1.214
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "seek",
+      "n": 3,
+      "median_s": 1.1615,
+      "min_s": 0.787,
+      "max_s": 1.1876
+    },
+    {
+      "fixture": "h264",
+      "mode": "binary",
+      "case": "repeat",
+      "n": 3,
+      "median_s": 0.9337,
+      "min_s": 0.8344,
+      "max_s": 1.133
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "startup",
+      "n": 3,
+      "median_s": 1.2056,
+      "min_s": 0.9058,
+      "max_s": 1.3153
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "seek",
+      "n": 3,
+      "median_s": 1.5472,
+      "min_s": 1.4446,
+      "max_s": 2.0941
+    },
+    {
+      "fixture": "h264",
+      "mode": "source",
+      "case": "repeat",
+      "n": 3,
+      "median_s": 1.5269,
+      "min_s": 1.512,
+      "max_s": 1.5709
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "startup",
+      "n": 3,
+      "median_s": 0.7256,
+      "min_s": 0.6793,
+      "max_s": 0.9443
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "seek",
+      "n": 3,
+      "median_s": 1.0953,
+      "min_s": 1.0781,
+      "max_s": 1.1879
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "binary",
+      "case": "repeat",
+      "n": 3,
+      "median_s": 1.1048,
+      "min_s": 0.9553,
+      "max_s": 1.1386
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "startup",
+      "n": 3,
+      "median_s": 0.9641,
+      "min_s": 0.8881,
+      "max_s": 0.9986
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "seek",
+      "n": 3,
+      "median_s": 1.8171,
+      "min_s": 1.623,
+      "max_s": 1.8575
+    },
+    {
+      "fixture": "hevc_hdr",
+      "mode": "source",
+      "case": "repeat",
+      "n": 3,
+      "median_s": 1.6775,
+      "min_s": 1.5752,
+      "max_s": 1.8341
+    }
+  ],
+  "finished_at": 1794551034.8672633
+}
