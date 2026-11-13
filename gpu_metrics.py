@@ -1,6 +1,7 @@
 """Read driver GPU counters through IOKit; no processes, sudo, or GPU workloads."""
 import ctypes as C
 import math
+import plistlib
 import sys
 import time
 
@@ -32,9 +33,10 @@ class IOKitReader:
         self.cf_release = bind(self.cf, 'CFRelease', None, [C.c_void_p])
         self.type_id = bind(self.cf, 'CFGetTypeID', C.c_ulong, [C.c_void_p])
         self.dict_type = bind(self.cf, 'CFDictionaryGetTypeID', C.c_ulong, [])
-        self.number_type = bind(self.cf, 'CFNumberGetTypeID', C.c_ulong, [])
-        self.get = bind(self.cf, 'CFDictionaryGetValue', C.c_void_p, [C.c_void_p, C.c_void_p])
-        self.number = bind(self.cf, 'CFNumberGetValue', C.c_bool, [C.c_void_p, C.c_int, C.c_void_p])
+        self.data = bind(self.cf, 'CFPropertyListCreateData', C.c_void_p, [C.c_void_p, C.c_void_p, C.c_long, C.c_ulong, C.c_void_p])
+        self.length = bind(self.cf, 'CFDataGetLength', C.c_long, [C.c_void_p])
+        self.bytes = bind(self.cf, 'CFDataGetBytePtr', C.c_void_p, [C.c_void_p])
+
 
     def read(self):
         iterator = C.c_uint32()
@@ -58,20 +60,17 @@ class IOKitReader:
                         continue
                     name = C.create_string_buffer(128)
                     self.kind(service, name)
-                    row = {'name': name.value.decode(errors='replace'), 'statistics': {}}
-                    for text in KEYS:
-                        field = self.string(None, text.encode(), 0x08000100)
-                        if not field:
-                            raise MemoryError('GPU counter key unavailable')
-                        try:
-                            value = self.get(stats, field)
-                            if value and self.type_id(value) == self.number_type():
-                                out = C.c_double()
-                                if self.number(value, 6, C.byref(out)):
-                                    row['statistics'][text] = out.value
-                        finally:
-                            self.cf_release(field)
-                    rows.append(row)
+                    data = self.data(None, stats, 200, 0, None)
+                    if not data:
+                        raise ValueError('GPU statistics unavailable')
+                    try:
+                        size = self.length(data)
+                        if not 0 < size <= 65536:
+                            raise ValueError('GPU statistics too large')
+                        values = plistlib.loads(C.string_at(self.bytes(data), size))
+                    finally:
+                        self.cf_release(data)
+                    rows.append({'name': name.value.decode(errors='replace'), 'statistics': values})
                 finally:
                     if stats:
                         self.cf_release(stats)
@@ -93,7 +92,7 @@ def normalize(rows, now):
                 valid = valid and n <= 100
             values[target] = n if valid else None
         if any(n is not None for n in values.values()):
-            devices.append({'name': str(row.get('name') or 'GPU')[:80], **values})
+            devices.append({'name': str(row.get('name') or 'GPU')[:80], 'counter_names': sorted(str(k)[:80] for k in row.get('statistics', {}))[:64], **values})
     result = {key: None for key in KEYS.values()}
     result.update(gpu_state='available' if devices else 'unavailable', gpu_sample_at=now,
                   gpu_error=None, gpu_name=None, gpu_devices=len(devices))
@@ -103,7 +102,7 @@ def normalize(rows, now):
     # Display the busiest adapter; each reading and its memory belong to that adapter.
     device = max(devices, key=lambda d: d['gpu_percent'] if d['gpu_percent'] is not None else -1)
     result.update({k: device[k] for k in KEYS.values()})
-    result.update(gpu_name=device['name'], gpu_reason='Busiest adapter' if len(devices) > 1 else None)
+    result.update(gpu_name=device['name'], gpu_counter_names=device['counter_names'], gpu_reason='Busiest adapter' if len(devices) > 1 else None)
     return result
 
 
