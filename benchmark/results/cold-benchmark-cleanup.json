@@ -1,0 +1,20 @@
+{
+  "at_utc": "2026-11-13T08:21:11.977668+00:00",
+  "fixture_app": "tor-mac-bench",
+  "fixture_app_version": 3,
+  "fixture_cleanup": {
+    "removed_files": 4,
+    "removed_bytes": 472843340,
+    "remaining_files": 0
+  },
+  "fixture_app_delete_http": 200,
+  "fixture_app_absent_http": 404,
+  "isolated_tor_app": "tor-cold-bench",
+  "isolated_tor_app_delete_verified_http": 404,
+  "isolated_workflow": {
+    "id": 43384884553,
+    "status": "completed",
+    "conclusion": "cancelled",
+    "head_sha": "b88f8ef8d90e697c9a10df23ff8bc910b0f1bcac"
+  }
+}

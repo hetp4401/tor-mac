@@ -1,0 +1,47 @@
+{
+  "source_bytes": 24619203,
+  "source_sha256": "96c30beb757393ba4a9f828648b44f80b3248fac552d7b1fc210060cd71a1d32",
+  "origin_limit_mib_s": 8,
+  "baseline_revision": "b88f8ef",
+  "candidate_source_sha256": "9eac001a0d942f9b387b0566ba56b83bebe646b6ed06dfb48f342b104772c9ab",
+  "reproduce": "python3 tests/test_cold_source.py --measure /tmp/tor-cold-profile/fixture-tail.mkv",
+  "fixture_command": "ffmpeg -v error -f lavfi -i testsrc2=size=960x540:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 -t 26 -c:v libx264 -preset ultrafast -crf 0 -g 48 -sc_threshold 0 -c:a aac -y /tmp/tor-cold-profile/fixture-tail.mkv",
+  "results": [
+    {
+      "mode": "baseline",
+      "prefix_ready_s": 2.1408,
+      "probe_ready_s": 3.0376,
+      "origin_bytes_at_probe": 24619203,
+      "duration": 26.021,
+      "tracks": 1,
+      "pieces": 13,
+      "prefix_sha256": "b53acb51fca42232643fef74319261e7fa9410b3da4fbd2ef5b4368fc6a2a7b7",
+      "metadata_sha256": "1d8ef63f7a1afeda30b4f9ceffc53166acbeafb66974f2d0ccfdb5790827c6f7",
+      "errors": []
+    },
+    {
+      "mode": "progressive_only",
+      "prefix_ready_s": 0.1005,
+      "probe_ready_s": 2.2776,
+      "origin_bytes_at_probe": 18819267,
+      "duration": 26.021,
+      "tracks": 1,
+      "pieces": 13,
+      "prefix_sha256": "b53acb51fca42232643fef74319261e7fa9410b3da4fbd2ef5b4368fc6a2a7b7",
+      "metadata_sha256": "1d8ef63f7a1afeda30b4f9ceffc53166acbeafb66974f2d0ccfdb5790827c6f7",
+      "errors": []
+    },
+    {
+      "mode": "progressive_windows",
+      "prefix_ready_s": 0.1931,
+      "probe_ready_s": 0.2339,
+      "origin_bytes_at_probe": 1605893,
+      "duration": 26.021,
+      "tracks": 1,
+      "pieces": 13,
+      "prefix_sha256": "b53acb51fca42232643fef74319261e7fa9410b3da4fbd2ef5b4368fc6a2a7b7",
+      "metadata_sha256": "1d8ef63f7a1afeda30b4f9ceffc53166acbeafb66974f2d0ccfdb5790827c6f7",
+      "errors": []
+    }
+  ]
+}

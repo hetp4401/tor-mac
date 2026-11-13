@@ -1,0 +1,3336 @@
+{
+  "engine": "videotoolbox",
+  "trials": 5,
+  "cases": [
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "input_bytes": 284889,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "ceb2d81539353bb96fc055caddc09e443cd28101a63f929724290ac4c924dc1e",
+          "output_bytes": 665708,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "08efa25a6bbb10eddb9429221160e2d699af62f140ec3428f21b6accb3dc6b04",
+          "output_bytes": 665708,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "6be48bdbfffbd59dab89428a26c713a3040539cab60c034801236f2ce1048085",
+          "output_bytes": 665708,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "c193b5f5f64c25687b789356fe14db3b918090f7badfe9a894107e4448f067f4",
+          "output_bytes": 665708,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "cbf03ea77aacfbd6f450ddf6b10cefadd9b4365f587df686fb6fb26ad5527c9a",
+          "output_bytes": 665708,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "input_bytes": 302310,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "a9fb5737a01aa64e6d51d9ff8e3f62ee1df31459c9c21efbce536efc03fe473c",
+          "output_bytes": 693720,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "68c81e8a75b409938a6d08a306cd3ab7b70ea75248df5fcdfb5fe34e60db7967",
+          "output_bytes": 693720,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "1ff10bdf19dcba0e678a0934857b66eb0c29e203394a0a51d27c9c39c4d7161a",
+          "output_bytes": 693720,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "4cddc6ca03d35e730869034216b82c4cdb27c634200ca17d0e6c2edbe9883934",
+          "output_bytes": 693720,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "42846d75f40bf418f98e6096f82d7f1e0d3c9aa391f43e270514dacb8a5074c9",
+          "output_sha256": "8ae5f27ca53e5486b0b4e900f94d8b5fe805867724b3b762d1124c863778a81c",
+          "output_bytes": 693720,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "input_bytes": 1548736,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "1bb0956135c4d6823e6f265061e632c44414d8298a4e4c6cb139012fdb62e452",
+          "output_bytes": 679432,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "5de2154ff7f8005dff01d1a172800a04ecda0199325368c16dbbca74accd0a3b",
+          "output_bytes": 679432,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "e93d9a3d3af47cae406ecaa6678b5094fd1c934e75baa1cbe3cddb4f09b001fa",
+          "output_bytes": 679432,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "373ed2cb205055db440193ea7e70df7124950c8a5ea53835136be83308814358",
+          "output_bytes": 679432,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "03cf4561fc34716997c06dfa5d76fc0c4099a9c106dda3c1d032d02636190fb5",
+          "output_bytes": 679432,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "input_bytes": 1571880,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "71df3d2ac3f83c34ff4f13cedb26b61e407f4984450aa78527e2f1ca01c2cafd",
+          "output_bytes": 708384,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "4abc785dd5ac3c8ec4c9f6b7f18f5586930390cd3fa10bba4411dad3c9efc541",
+          "output_bytes": 708384,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "44616785b1a7e7a4ea7bc21fc7a5901e37b2baefc872ca8c9701e58e1c683fe5",
+          "output_bytes": 708384,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "d984327a0a9d84085025b9f78f0306f8396c0eb4e758e2c4a42409ad197b4970",
+          "output_bytes": 708384,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1280,
+              "height": 720,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "6f72bb0b42c9cf620015b4706a15a2887f0985742b96a64e34a81727a1da5fe5",
+          "output_sha256": "7a804d6ef922f4df3426d694bcba1aa9e466e40155d4e4d832187dd8d7319bea",
+          "output_bytes": 708384,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "input_bytes": 406982,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "34569cf335fe50d98de6e8c1acea7370bd40ea2b09b85963e5c38596e95364c4",
+          "output_bytes": 1150560,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "32084c19b9c9eb2e5dea1d3f7a0c46423abd8dc72fe64c7ecead22610885f1fb",
+          "output_bytes": 1150560,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "5826f062c27d10f585cfa057cf58fa16da9a3d5a772825ae318500e6d965fcbf",
+          "output_bytes": 1150560,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "b90ebb4f590498905b0afffc6da8b60351f1124e112bd3a65717a29e97de10c8",
+          "output_bytes": 1150560,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "74439d142d7372a1c15dd57a63427178d7b6fdcd04a48c10e726bb7fabbb547c",
+          "output_bytes": 1150560,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "input_bytes": 424403,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "4ce7139f141a5c9d949c77e133213c1d85197e9e0b610f31f007352367bc9fc0",
+          "output_bytes": 1178572,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "750745672e71d6c5c770451c297d483521c05654566789c5fe85287738494686",
+          "output_bytes": 1178572,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "07ae6a875d12e95e9c81bbad0d3d6ff900b82bb2d377d9a4a906cb4000171e65",
+          "output_bytes": 1178572,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "9547948f5f0fcb6faf249377f5282c85b82af27c323e67c1b8bd3b4a4f5385a0",
+          "output_bytes": 1178572,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "10.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "9.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "c480b26cbb3654e27929a352f727e5f268a70bd93fc2158f8318110eb717fe86",
+          "output_sha256": "9182c058397eb897423052553737f11d7953a5535497d701ea329f576beb45fd",
+          "output_bytes": 1178572,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "input_bytes": 2361445,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "1144c60bea27e16247610e0bfe37e1a48af0dd8bbc5192244bd9974b5114840c",
+          "output_bytes": 1168044,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "74f94411b69ec0bc3277a83ac8498e3cd8b8c3f8e3a6c4f70c4d08c894ae37bd",
+          "output_bytes": 1168044,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "b570ecb5b1461910eeb3e613fb492eea39902ace1a26e820d497a99c053208d6",
+          "output_bytes": 1168044,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "3c48154738461fe9ca208f77f924163aa73cf46ee84b94a5a386f6e6daa7f259",
+          "output_bytes": 1168044,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "e389133db576a7fc3d554f9812c6b4c1817be473f057dcd343ecd2d200e416a2",
+          "output_bytes": 1168044,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "input_bytes": 2384589,
+      "validation": {
+        "baseline": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "0c38b788b1e7cd89147e7242a707f7fd7923dfe69fe4af26b03e67dbd22085fb",
+          "output_bytes": 1196996,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": true
+        },
+        "known-mkv": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "6ee6ae177f67780e8940ff9d9d193c39e2c977b85237e4b4ca13401e1630e44d",
+          "output_bytes": 1196996,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-256k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "9415127d24df5db689ae48f9feb6783a5c2a1929133cfc6a5f5ced44a6df27a9",
+          "output_bytes": 1196996,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "probe-64k": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "df0fe2e81e8a19cca5de78f4be98056a016c0c429e39dc30504808b5ff225a86",
+          "output_bytes": 1196996,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        },
+        "decode-1": {
+          "streams": [
+            {
+              "codec_name": "h264",
+              "codec_type": "video",
+              "width": 1920,
+              "height": 1080,
+              "start_time": "47.000000",
+              "duration": "1.000000",
+              "nb_read_frames": "24"
+            },
+            {
+              "codec_name": "aac",
+              "codec_type": "audio",
+              "start_time": "46.978667",
+              "duration": "1.024000",
+              "nb_read_frames": "48"
+            }
+          ],
+          "decoded_video_sha256": "5393e4dee6e237f6ffedc4120d3bec662e91731deb34be798c1edf1f3b82f53b",
+          "output_sha256": "a27b3c56611718d704f3e93f82bdd3f28e57dd013b56c5206c7c75f4194182d3",
+          "output_bytes": 1196996,
+          "decoded_equal_baseline": true,
+          "encoded_equal_baseline": false
+        }
+      }
+    }
+  ],
+  "rows": [
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.008656874997541308,
+      "process_s": 1.2001954169973033,
+      "child_cpu_s": 0.37106899999999876,
+      "output_bytes": 665708,
+      "output_sha256": "ceb2d81539353bb96fc055caddc09e443cd28101a63f929724290ac4c924dc1e"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.005503958003828302,
+      "process_s": 0.8927494579984341,
+      "child_cpu_s": 0.3087450000000018,
+      "output_bytes": 665708,
+      "output_sha256": "08efa25a6bbb10eddb9429221160e2d699af62f140ec3428f21b6accb3dc6b04"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.00458624999737367,
+      "process_s": 0.9172017499950016,
+      "child_cpu_s": 0.3049619999999975,
+      "output_bytes": 665708,
+      "output_sha256": "6be48bdbfffbd59dab89428a26c713a3040539cab60c034801236f2ce1048085"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.004874374993960373,
+      "process_s": 0.9644814999919618,
+      "child_cpu_s": 0.32012299999999794,
+      "output_bytes": 665708,
+      "output_sha256": "c193b5f5f64c25687b789356fe14db3b918090f7badfe9a894107e4448f067f4"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.0038600840052822605,
+      "process_s": 0.9086360840010457,
+      "child_cpu_s": 0.28396400000000277,
+      "output_bytes": 665708,
+      "output_sha256": "cbf03ea77aacfbd6f450ddf6b10cefadd9b4365f587df686fb6fb26ad5527c9a"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.003834042014204897,
+      "process_s": 0.9578816670109518,
+      "child_cpu_s": 0.2955209999999968,
+      "output_bytes": 665708,
+      "output_sha256": "9b99db179b0a914b94d3ac086d25e84b5bdca5a8a6272f10b0b54c6dc0a4c4d1"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.004386166998301633,
+      "process_s": 0.8766078339976957,
+      "child_cpu_s": 0.29099399999999864,
+      "output_bytes": 665708,
+      "output_sha256": "22ae6322b16b9e2edbb8b24b4e3ff2f14404f0051da9b6a1d4879bb2e048be31"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.004164042009506375,
+      "process_s": 0.861466250004014,
+      "child_cpu_s": 0.28106000000000186,
+      "output_bytes": 665708,
+      "output_sha256": "100feab6d3ffe670a409b5a7ff3b88184b1e1b0f94b463e21903c1f5fbab621b"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.004561875000945292,
+      "process_s": 0.9466532920050668,
+      "child_cpu_s": 0.3157100000000028,
+      "output_bytes": 665708,
+      "output_sha256": "d992a975ab28adc3c83fbe1411798f444e6d59dd7913536d734e95ac5c2a18e5"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.0052179580088704824,
+      "process_s": 0.9803667910018703,
+      "child_cpu_s": 0.299773999999998,
+      "output_bytes": 665708,
+      "output_sha256": "aced87c86729ace34c686a848f673f597ec057bb8b78bf51751bcdab7119fd80"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.005348000006051734,
+      "process_s": 1.039868000007118,
+      "child_cpu_s": 0.3306290000000023,
+      "output_bytes": 665708,
+      "output_sha256": "93dd365a4bb5983f01d37728aafcc3c3c70f30e9b1aa7196f17534466010bdcc"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.0049265830020885915,
+      "process_s": 1.0411591250012862,
+      "child_cpu_s": 0.31007699999999483,
+      "output_bytes": 665708,
+      "output_sha256": "c21b7b2f60c9d654afbaef58e0d5d3133f620f258ffc48f9146ceb0c7d015b46"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.009421750000910833,
+      "process_s": 0.9847072080010548,
+      "child_cpu_s": 0.2924870000000026,
+      "output_bytes": 665708,
+      "output_sha256": "77128d9796cf8f6a851fd8e53a3decfa835fdb9e58b68c15cc55e2b19222fadd"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.0058545000065350905,
+      "process_s": 0.8955094590055523,
+      "child_cpu_s": 0.2986299999999993,
+      "output_bytes": 665708,
+      "output_sha256": "d17b29214d458a93a7dcfeba9c1f928ca8ae9ebb3863f2b2e63f562bbcf652f3"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.005568959008087404,
+      "process_s": 0.9136228340066737,
+      "child_cpu_s": 0.28901800000000266,
+      "output_bytes": 665708,
+      "output_sha256": "b05e5927851a4c35e55d3be01e5ab5322926285d2a457ef9a4827593f641dbf5"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.005185874993912876,
+      "process_s": 0.9936013340047793,
+      "child_cpu_s": 0.2988980000000008,
+      "output_bytes": 665708,
+      "output_sha256": "0a46de4a9e99c06877c824fa834930c81a6faa06d738777b1dcdec71ce73ebc8"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.009061584001756273,
+      "process_s": 0.9164448750088923,
+      "child_cpu_s": 0.3021050000000005,
+      "output_bytes": 665708,
+      "output_sha256": "0ef27bf8b064e0ef960d937e63bf84190c9b82fa01b5bef893c52e7d05ef8005"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.003671042009955272,
+      "process_s": 0.9171683750028023,
+      "child_cpu_s": 0.29610399999999704,
+      "output_bytes": 665708,
+      "output_sha256": "204f5ccc69343322c94564e67dffd8c8a079c9239a28773f56685ca2ed2eec08"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.0039793339965399355,
+      "process_s": 0.9643464999971911,
+      "child_cpu_s": 0.2991849999999996,
+      "output_bytes": 665708,
+      "output_sha256": "2c1d79c1294f7883032b9d4b6bdb4e5447b19d2732d952495b40a0f9fd5d16ba"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.005389625002862886,
+      "process_s": 0.9342157079954632,
+      "child_cpu_s": 0.3078430000000041,
+      "output_bytes": 665708,
+      "output_sha256": "614858b7f49dd4ae28110cefdf633073e2b01d6c72718b38c27d78956a1c8949"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.004945916996803135,
+      "process_s": 0.9204988749988843,
+      "child_cpu_s": 0.311579999999994,
+      "output_bytes": 665708,
+      "output_sha256": "bcc3ab3836abc5a9f68064d79ccb560f22a74edfb45805128d83ada83b32c91f"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.008788916995399632,
+      "process_s": 0.9766313330037519,
+      "child_cpu_s": 0.3126360000000048,
+      "output_bytes": 665708,
+      "output_sha256": "9135985ea1eea3dc49248103be9cd85c883c0f6c92f34d9f63c4cbdd061b1ca2"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.0035927079879911616,
+      "process_s": 0.904012667000643,
+      "child_cpu_s": 0.3051829999999942,
+      "output_bytes": 665708,
+      "output_sha256": "866cc2b2f99d3abc5376ae877e4152901321167d8b57a25dfd9bd8806334f787"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.005137916989042424,
+      "process_s": 0.8993152089969954,
+      "child_cpu_s": 0.29829200000000444,
+      "output_bytes": 665708,
+      "output_sha256": "ec544f32c7607625e609e01b573dcd4b6ff97befe2ffe321d164a1d7f867abc1"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.0034063750063069165,
+      "process_s": 0.8804439999948954,
+      "child_cpu_s": 0.2917949999999996,
+      "output_bytes": 665708,
+      "output_sha256": "20345165f8c37b41286f16c492bfa1f4464e3c8f325d7f5fe016f99ead36b30e"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.012703290994977579,
+      "process_s": 1.0282343329890864,
+      "child_cpu_s": 0.5642980000000009,
+      "output_bytes": 693720,
+      "output_sha256": "a9fb5737a01aa64e6d51d9ff8e3f62ee1df31459c9c21efbce536efc03fe473c"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.010239958995953202,
+      "process_s": 1.00631075000274,
+      "child_cpu_s": 0.5705569999999991,
+      "output_bytes": 693720,
+      "output_sha256": "68c81e8a75b409938a6d08a306cd3ab7b70ea75248df5fcdfb5fe34e60db7967"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.006629999988945201,
+      "process_s": 1.0087102499965113,
+      "child_cpu_s": 0.5623510000000014,
+      "output_bytes": 693720,
+      "output_sha256": "1ff10bdf19dcba0e678a0934857b66eb0c29e203394a0a51d27c9c39c4d7161a"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.007847542001400143,
+      "process_s": 0.9945078330056276,
+      "child_cpu_s": 0.5625809999999953,
+      "output_bytes": 693720,
+      "output_sha256": "4cddc6ca03d35e730869034216b82c4cdb27c634200ca17d0e6c2edbe9883934"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.006344166991766542,
+      "process_s": 1.0423393749952083,
+      "child_cpu_s": 0.5852830000000049,
+      "output_bytes": 693720,
+      "output_sha256": "8ae5f27ca53e5486b0b4e900f94d8b5fe805867724b3b762d1124c863778a81c"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.007568334011011757,
+      "process_s": 1.0951197090034839,
+      "child_cpu_s": 0.5725809999999996,
+      "output_bytes": 693720,
+      "output_sha256": "eec0c13fd932dcf62820c44c37027f2be620dcfb5ead295a3e5fc82e89f01f5b"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.010083875007694587,
+      "process_s": 1.0561261670081876,
+      "child_cpu_s": 0.6022609999999933,
+      "output_bytes": 693720,
+      "output_sha256": "a639d26be5ba24fcd5f5f2940743fac51a65580b127089312fb3c7470942273e"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.015653542010113597,
+      "process_s": 1.0580070420110133,
+      "child_cpu_s": 0.6076840000000017,
+      "output_bytes": 693720,
+      "output_sha256": "440aaef4873aa23464dd3d8e3af12e3470a3168f775460f2681207c027b30412"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.007145458002923988,
+      "process_s": 1.1109699999942677,
+      "child_cpu_s": 0.6115510000000013,
+      "output_bytes": 693720,
+      "output_sha256": "fe5b1b5b8fc50ea1b2d19df927ddae5c08b602eb9f8662d4283081bc9fdbffda"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.009371874999487773,
+      "process_s": 0.9762570000020787,
+      "child_cpu_s": 0.5674899999999994,
+      "output_bytes": 693720,
+      "output_sha256": "ccbbba8d4410997f337f7a50b0f197aa3fb7c101f4109821bac689ba47414bfe"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.005502625004737638,
+      "process_s": 1.0256687090004561,
+      "child_cpu_s": 0.5921189999999994,
+      "output_bytes": 693720,
+      "output_sha256": "e09bf960ced7e4be39e59ec4a13542b228998bec4ca0fd796ce808f8e9dbf5a3"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.007845625004847534,
+      "process_s": 1.0511778340005549,
+      "child_cpu_s": 0.5890280000000017,
+      "output_bytes": 693720,
+      "output_sha256": "54ff97baf34628c04a6a98235e782c982458e963debd5e55176d0e41ed4d03b8"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.0071560829965164885,
+      "process_s": 1.123471166996751,
+      "child_cpu_s": 0.604934000000001,
+      "output_bytes": 693720,
+      "output_sha256": "27c08950a4548ff34cd93faa95461e45699bf58d4b1be64b63c58f905a0b84e9"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.0075638330017682165,
+      "process_s": 1.1668689159996575,
+      "child_cpu_s": 0.6182189999999999,
+      "output_bytes": 693720,
+      "output_sha256": "3c915fc9c4a50c7a104f221ae9f9302171882f175fad825c84afe0f3e57aebbd"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.008669666000059806,
+      "process_s": 1.3158244999940507,
+      "child_cpu_s": 0.6217150000000009,
+      "output_bytes": 693720,
+      "output_sha256": "4e5c9a53ddb239900bd0f541348cfcccc80fad870c391d83ae6bebb11c1cc25a"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.0096708749915706,
+      "process_s": 1.1741213329951279,
+      "child_cpu_s": 0.5626309999999952,
+      "output_bytes": 693720,
+      "output_sha256": "41a7480e59a3936df681f0cfab6610ed1b9d14d7658a4ecfbac88cd313b652c5"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.006812915991758928,
+      "process_s": 1.0366905410046456,
+      "child_cpu_s": 0.5863950000000031,
+      "output_bytes": 693720,
+      "output_sha256": "ce8a1683e09f5bda09ce892a7f5a83a79059b9ca74e04c0db10f21118fdc179b"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.011599542005569674,
+      "process_s": 1.7787596249982016,
+      "child_cpu_s": 0.5732910000000002,
+      "output_bytes": 693720,
+      "output_sha256": "564d9f99e1e9b451e1ca1f50f5223dd5e31352732460321457e4cc0077cc410b"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.006773583998437971,
+      "process_s": 1.0712394589936594,
+      "child_cpu_s": 0.5989030000000026,
+      "output_bytes": 693720,
+      "output_sha256": "cff37bf672ba94c02724c751e0e2f47d5134ca6ae095d791206f76b3d059461f"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.002813042010529898,
+      "process_s": 1.0207176249969052,
+      "child_cpu_s": 0.5781409999999996,
+      "output_bytes": 693720,
+      "output_sha256": "f8088c8e1582452189419f329c5f0ecc2c4c2d61bcde6d701008b606d6080a64"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.003957541004638188,
+      "process_s": 1.1075740410014987,
+      "child_cpu_s": 0.585535999999995,
+      "output_bytes": 693720,
+      "output_sha256": "b03217eb32d242cbf44ce1bbc5f4b85f8a2574692e8b78b4b923f36bfa2e01fd"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.005346540987375192,
+      "process_s": 1.010025499999756,
+      "child_cpu_s": 0.5763440000000051,
+      "output_bytes": 693720,
+      "output_sha256": "737a9ccdaf3f9ba770f984423c8a6e2e8319e6939f745f437a21ced97ba8bc94"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.005576916999416426,
+      "process_s": 1.0277893750026124,
+      "child_cpu_s": 0.5816449999999964,
+      "output_bytes": 693720,
+      "output_sha256": "61862fcf2e4835b66694a1495479c5da3aca8d447511a9d85390d697036082a5"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.004096208009286784,
+      "process_s": 1.0361254169984022,
+      "child_cpu_s": 0.5793229999999987,
+      "output_bytes": 693720,
+      "output_sha256": "2e7fa8fd6910c4446150d31e1aa16f598892a80e41c985bf199296aebd76fd3b"
+    },
+    {
+      "codec": "h264",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.005988292003166862,
+      "process_s": 0.9839392919966485,
+      "child_cpu_s": 0.5649260000000043,
+      "output_bytes": 693720,
+      "output_sha256": "dff241edbfa69ab644d335995eea9f33eece5cbbe829078048a40ccbfff769c2"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.01020566700026393,
+      "process_s": 1.3969485420093406,
+      "child_cpu_s": 0.43693599999999755,
+      "output_bytes": 679432,
+      "output_sha256": "1bb0956135c4d6823e6f265061e632c44414d8298a4e4c6cb139012fdb62e452"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.01140808300988283,
+      "process_s": 1.4177223750011763,
+      "child_cpu_s": 0.44670300000000296,
+      "output_bytes": 679432,
+      "output_sha256": "5de2154ff7f8005dff01d1a172800a04ecda0199325368c16dbbca74accd0a3b"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.009062750003067777,
+      "process_s": 1.5321617080044234,
+      "child_cpu_s": 0.4731539999999992,
+      "output_bytes": 679432,
+      "output_sha256": "e93d9a3d3af47cae406ecaa6678b5094fd1c934e75baa1cbe3cddb4f09b001fa"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.008573541999794543,
+      "process_s": 1.342467416994623,
+      "child_cpu_s": 0.39999699999999905,
+      "output_bytes": 679432,
+      "output_sha256": "373ed2cb205055db440193ea7e70df7124950c8a5ea53835136be83308814358"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.00937441700079944,
+      "process_s": 1.4427897080022376,
+      "child_cpu_s": 0.4226510000000001,
+      "output_bytes": 679432,
+      "output_sha256": "03cf4561fc34716997c06dfa5d76fc0c4099a9c106dda3c1d032d02636190fb5"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.005413291000877507,
+      "process_s": 1.3077097499917727,
+      "child_cpu_s": 0.3879869999999954,
+      "output_bytes": 679432,
+      "output_sha256": "60b2d19f4c1fe55d80691fdad04238fd35ab9879da9605e467f1316fc9c9bd6e"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.007660041010240093,
+      "process_s": 1.4220289580116514,
+      "child_cpu_s": 0.42380899999999677,
+      "output_bytes": 679432,
+      "output_sha256": "ba728d23853d8f80b0d2c39cb85a50a01ccbb1d8c8f79f3195f7655594767a5d"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.008807624995824881,
+      "process_s": 1.3554457079881104,
+      "child_cpu_s": 0.428586000000001,
+      "output_bytes": 679432,
+      "output_sha256": "20ffd67b57ce9238f8272a82df0dbe1852563f4001874fa1d42bc59503828734"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.008474333997583017,
+      "process_s": 1.3491606250026962,
+      "child_cpu_s": 0.41977200000000536,
+      "output_bytes": 679432,
+      "output_sha256": "bc2a70e0ac3fb57999cfd7423bb39b65cc149072ac04b647973c00da6b83cfe2"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.005883541991352104,
+      "process_s": 1.3588534579903353,
+      "child_cpu_s": 0.408471000000004,
+      "output_bytes": 679432,
+      "output_sha256": "0066678344bc1263f614a7ca4f58e060596cff31631d71f386dcb02c02817b97"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.0040562919894000515,
+      "process_s": 1.389324208998005,
+      "child_cpu_s": 0.4139060000000008,
+      "output_bytes": 679432,
+      "output_sha256": "cf482b0a64e3fc7d0f2ddbe8d53dabead297de83566d19512e845dec4372e605"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.009100416995352134,
+      "process_s": 1.3793533749994822,
+      "child_cpu_s": 0.40831999999998914,
+      "output_bytes": 679432,
+      "output_sha256": "89bf4ce1a427eda8e1b172989676c94e79185704ffba05960414bef490dd3335"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.00744541700987611,
+      "process_s": 1.382457167012035,
+      "child_cpu_s": 0.42711899999999936,
+      "output_bytes": 679432,
+      "output_sha256": "2c2fbd364f6b705f2d287b19d1df92a562805ae3b37ce035ac69645bbc535f41"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.003952166007366031,
+      "process_s": 1.5542746660066769,
+      "child_cpu_s": 0.44327800000000117,
+      "output_bytes": 679432,
+      "output_sha256": "cf248fd96cd30ed339537cf6cda3f165e2ce06eb73ffced8305e99bc202b9241"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.004673208997701295,
+      "process_s": 1.3562074590008706,
+      "child_cpu_s": 0.42848700000001116,
+      "output_bytes": 679432,
+      "output_sha256": "a0c126e49b40e99701786d861892f74277337092f5ddea72b7fb976581b28c38"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.005889874999411404,
+      "process_s": 1.3575988750089891,
+      "child_cpu_s": 0.39728799999999076,
+      "output_bytes": 679432,
+      "output_sha256": "5e7ac38c64697f93264a0b25029e2d4aca048194c5836a54f0679c93a0a24c45"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.0040865420014597476,
+      "process_s": 1.404581082999357,
+      "child_cpu_s": 0.42818100000000214,
+      "output_bytes": 679432,
+      "output_sha256": "eba032dadf7bb35299be7fcadb2af4abce30ba03eb5f45cf74cde7f7963cc3f4"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.006984875013586134,
+      "process_s": 1.579094458007603,
+      "child_cpu_s": 0.45491000000000703,
+      "output_bytes": 679432,
+      "output_sha256": "600db0fa4d01e4729c86a269a9a2564ad33d0c4268280e903c35cb167086ee34"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.0044609579927055165,
+      "process_s": 1.3355647080024937,
+      "child_cpu_s": 0.42427599999998833,
+      "output_bytes": 679432,
+      "output_sha256": "5aef1cea5a0231104c92f8e817e5682bcd49e54ec2ec4b3be10eed0aa25b1533"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.00804241698642727,
+      "process_s": 1.3122728749876842,
+      "child_cpu_s": 0.42058000000000284,
+      "output_bytes": 679432,
+      "output_sha256": "bffbaac32ee8c9124825e36d380b2723eb9596112b44869a645843a7ee9d190a"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.004382709012134001,
+      "process_s": 1.367423333998886,
+      "child_cpu_s": 0.42302700000000293,
+      "output_bytes": 679432,
+      "output_sha256": "878a5cc34386c5599ab0494361e4b1544a66136bdb4fea3f35c80fe9b94cb4b8"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.004883040994172916,
+      "process_s": 1.3377996659983182,
+      "child_cpu_s": 0.4224890000000059,
+      "output_bytes": 679432,
+      "output_sha256": "e6f085f2051039272467575d670dc46e7499b8a7e5afff0b630ba01b17c545fe"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.005512999996426515,
+      "process_s": 1.3084699169994565,
+      "child_cpu_s": 0.4203059999999983,
+      "output_bytes": 679432,
+      "output_sha256": "1001781445eb360a51bf4fa7bc962c2d97110f379088d12b69fbc6dafa00c920"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.004135166993364692,
+      "process_s": 1.3019691669906024,
+      "child_cpu_s": 0.39307400000000214,
+      "output_bytes": 679432,
+      "output_sha256": "826bfd0a030a9fb71efe0c6be9bd33af31622e764b35b4f4b40b569db9290baa"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.0050129169976571575,
+      "process_s": 1.313894207996782,
+      "child_cpu_s": 0.4002820000000007,
+      "output_bytes": 679432,
+      "output_sha256": "b834cfde1ad88e2b41b01d67baff50266db75c19a7940b913af30d3f3f8724dd"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.01105741701030638,
+      "process_s": 1.4401234999968437,
+      "child_cpu_s": 0.6013839999999995,
+      "output_bytes": 708384,
+      "output_sha256": "71df3d2ac3f83c34ff4f13cedb26b61e407f4984450aa78527e2f1ca01c2cafd"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.0076537919958354905,
+      "process_s": 1.4374919999972917,
+      "child_cpu_s": 0.6118500000000004,
+      "output_bytes": 708384,
+      "output_sha256": "4abc785dd5ac3c8ec4c9f6b7f18f5586930390cd3fa10bba4411dad3c9efc541"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.007637957998667844,
+      "process_s": 1.3823041670111706,
+      "child_cpu_s": 0.5961599999999976,
+      "output_bytes": 708384,
+      "output_sha256": "44616785b1a7e7a4ea7bc21fc7a5901e37b2baefc872ca8c9701e58e1c683fe5"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.009032583009684458,
+      "process_s": 1.3363438750093337,
+      "child_cpu_s": 0.5607650000000053,
+      "output_bytes": 708384,
+      "output_sha256": "d984327a0a9d84085025b9f78f0306f8396c0eb4e758e2c4a42409ad197b4970"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.009005208004964516,
+      "process_s": 1.3932897500053514,
+      "child_cpu_s": 0.5569659999999903,
+      "output_bytes": 708384,
+      "output_sha256": "7a804d6ef922f4df3426d694bcba1aa9e466e40155d4e4d832187dd8d7319bea"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.009264374995836988,
+      "process_s": 1.3640788749908097,
+      "child_cpu_s": 0.5318680000000064,
+      "output_bytes": 708384,
+      "output_sha256": "d36d0b5029aeae6e6df59f159866e60f39fd2822411bb103cd029e25b11ee3ba"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.006785083998693153,
+      "process_s": 1.3932013339945115,
+      "child_cpu_s": 0.6112380000000055,
+      "output_bytes": 708384,
+      "output_sha256": "9d5413b30371df81c6f5a7c6ca1e9c9517ff69d00216af8ffafc50436e439292"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.006468583989772014,
+      "process_s": 1.3751886669924716,
+      "child_cpu_s": 0.5923329999999929,
+      "output_bytes": 708384,
+      "output_sha256": "91185c444cb7beab05355289840ea15d736cfa23cb590485db76afe04b59dd26"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.008812000000034459,
+      "process_s": 1.5676981670112582,
+      "child_cpu_s": 0.6132089999999941,
+      "output_bytes": 708384,
+      "output_sha256": "f69b851042d5c0e37ba295126f29c0c0dafb9b777b33b72bee623e19d53c1b7b"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.010327417010557838,
+      "process_s": 1.646963000006508,
+      "child_cpu_s": 0.6501350000000077,
+      "output_bytes": 708384,
+      "output_sha256": "e7d0872923273605b5ce0aa65837eaec6eb3a783d00c493ba76d875854151c8b"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.008377042002393864,
+      "process_s": 1.4240446250041714,
+      "child_cpu_s": 0.5757809999999921,
+      "output_bytes": 708384,
+      "output_sha256": "8548bb6348bbe237b0c8e27901afdeb090dbf8243458d3d1e894f84e1d1df6e5"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.008385749999433756,
+      "process_s": 1.4273032079945551,
+      "child_cpu_s": 0.6225640000000041,
+      "output_bytes": 708384,
+      "output_sha256": "3ad6204d48460a63ed388b89482c9748a580c7836b17b0f2360a946558a8ab09"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.005207374997553416,
+      "process_s": 1.3666912909975508,
+      "child_cpu_s": 0.5012840000000036,
+      "output_bytes": 708384,
+      "output_sha256": "4f94325d12d92c6f01764a1f4d8caef44046753f465dc08b27270a352d3380f7"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.007894124995800667,
+      "process_s": 1.3558466249960475,
+      "child_cpu_s": 0.5990900000000057,
+      "output_bytes": 708384,
+      "output_sha256": "00d24ef29dfb9ca1f8c0ac0c507bf5643eefa4ebfaff56745a1a556544a085df"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.007058415998471901,
+      "process_s": 1.333611624999321,
+      "child_cpu_s": 0.5495279999999934,
+      "output_bytes": 708384,
+      "output_sha256": "6eeacaaa8fe4b62347c0149d15c913a7cbb359080bca3d33dd450c434926e290"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.005619832998490892,
+      "process_s": 1.4125259159918642,
+      "child_cpu_s": 0.5599419999999942,
+      "output_bytes": 708384,
+      "output_sha256": "a8389ae0227189fd4b7b511f556c3818c8bc34282722898f1201760c591c806e"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.0064447080076206475,
+      "process_s": 1.3729027079971274,
+      "child_cpu_s": 0.5959810000000036,
+      "output_bytes": 708384,
+      "output_sha256": "7f920dbd3e55ead1df0d95d8e8a200995f45880bf4c2d3eeca135e4c90b3d19c"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.003471250005532056,
+      "process_s": 1.4248201670125127,
+      "child_cpu_s": 0.5989100000000036,
+      "output_bytes": 708384,
+      "output_sha256": "5a4633136d6eb99a8ba8dc4212485778671f9643de51ec453f69af465280a3de"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.005360583003493957,
+      "process_s": 1.3544907909963513,
+      "child_cpu_s": 0.554142999999991,
+      "output_bytes": 708384,
+      "output_sha256": "a4aa1285492af7b0c333788bf13f7bb575f6289f3347d822ebbae82e8cd47b89"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.004457584000192583,
+      "process_s": 1.4424800840060925,
+      "child_cpu_s": 0.5773300000000035,
+      "output_bytes": 708384,
+      "output_sha256": "b9a237921653da81b2ae448570c50ee07bb613dc878664676fe3dbaaf36f4df5"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.00937500000873115,
+      "process_s": 1.4046612920064945,
+      "child_cpu_s": 0.5767869999999995,
+      "output_bytes": 708384,
+      "output_sha256": "8d538b799a984e3025d1aa994ad16054b72be6f8ce0e050cb8d0ef13439eda76"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.005274249997455627,
+      "process_s": 1.876225957996212,
+      "child_cpu_s": 0.6001680000000107,
+      "output_bytes": 708384,
+      "output_sha256": "ccb0c496cd586698a51eafd17d49b990cf6d481fd70f05f44a9b12f80d2652c7"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.004772416999912821,
+      "process_s": 1.5398555419960758,
+      "child_cpu_s": 0.6033339999999896,
+      "output_bytes": 708384,
+      "output_sha256": "30fa8ba4b9e3e78eb62bbda673c9ddc27b4004ca65c704e808e82e8a471f844e"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.004841292000492103,
+      "process_s": 1.4210171669983538,
+      "child_cpu_s": 0.5893939999999986,
+      "output_bytes": 708384,
+      "output_sha256": "986bd67a990410f2e7f34c041c5268fa0409f9db8c17de05a73b6d71bece5510"
+    },
+    {
+      "codec": "h264",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.005552500006160699,
+      "process_s": 1.3088419580017217,
+      "child_cpu_s": 0.5391329999999996,
+      "output_bytes": 708384,
+      "output_sha256": "fa7983c989ead6d5d5435860e1c0d17011838a7b8d389b3110394ecb0907e782"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.003848584005027078,
+      "process_s": 2.042961084007402,
+      "child_cpu_s": 0.5140819999999877,
+      "output_bytes": 1150560,
+      "output_sha256": "34569cf335fe50d98de6e8c1acea7370bd40ea2b09b85963e5c38596e95364c4"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.005310500011546537,
+      "process_s": 1.110262583999429,
+      "child_cpu_s": 0.41147799999999535,
+      "output_bytes": 1150560,
+      "output_sha256": "32084c19b9c9eb2e5dea1d3f7a0c46423abd8dc72fe64c7ecead22610885f1fb"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.00294995799777098,
+      "process_s": 1.0218561250076164,
+      "child_cpu_s": 0.3830910000000429,
+      "output_bytes": 1150560,
+      "output_sha256": "5826f062c27d10f585cfa057cf58fa16da9a3d5a772825ae318500e6d965fcbf"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.002316665995749645,
+      "process_s": 1.3710210409917636,
+      "child_cpu_s": 0.3727339999999799,
+      "output_bytes": 1150560,
+      "output_sha256": "b90ebb4f590498905b0afffc6da8b60351f1124e112bd3a65717a29e97de10c8"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.008246291996329091,
+      "process_s": 1.0792511670006206,
+      "child_cpu_s": 0.4300920000000019,
+      "output_bytes": 1150560,
+      "output_sha256": "74439d142d7372a1c15dd57a63427178d7b6fdcd04a48c10e726bb7fabbb547c"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.004489665996516123,
+      "process_s": 0.9339453330030665,
+      "child_cpu_s": 0.3570720000000023,
+      "output_bytes": 1150560,
+      "output_sha256": "81571a2d6655386473b83366570ed3dc2b416fc9e0e68220c037749e516f0a84"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.010215999995125458,
+      "process_s": 1.0018978750013048,
+      "child_cpu_s": 0.4131599999999622,
+      "output_bytes": 1150560,
+      "output_sha256": "f471ab26c2418f9e3cf6ac5784cff0abde1ffd4cabd122f12b2f57932232094f"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.0059564170078374445,
+      "process_s": 0.9902907500072615,
+      "child_cpu_s": 0.4348300000000549,
+      "output_bytes": 1150560,
+      "output_sha256": "b986d1d34265c9e9d6304a984b33a08615837904a1793f80a653ea985113e3ae"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.004884291993221268,
+      "process_s": 1.0728111249918584,
+      "child_cpu_s": 0.39785799999994964,
+      "output_bytes": 1150560,
+      "output_sha256": "6c5be10bb9e5702447bd2a711afa7163c8185d8f6a6152308c4141770923f4e6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.005799917009426281,
+      "process_s": 0.9621845840010792,
+      "child_cpu_s": 0.40096200000002113,
+      "output_bytes": 1150560,
+      "output_sha256": "e9bbb6a9dd4d7c4da29b63d51de5e130295ee922aa7417b5456ee017897a6e59"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.005339582989108749,
+      "process_s": 1.195314665994374,
+      "child_cpu_s": 0.4152289999999894,
+      "output_bytes": 1150560,
+      "output_sha256": "1b310633b63fac1af3503b27a70ece9b33554e177002c889917e9fd569674403"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.005634667002595961,
+      "process_s": 1.0147956250002608,
+      "child_cpu_s": 0.40562199999999393,
+      "output_bytes": 1150560,
+      "output_sha256": "50cbdd647ce240f69a20f5cf0308398915ff1bc3b22c73423cbd0a7a9d0a20fc"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.006355125005939044,
+      "process_s": 1.0139927919954062,
+      "child_cpu_s": 0.38878100000004423,
+      "output_bytes": 1150560,
+      "output_sha256": "37e371bde696c80dedfa1562811fdf6dc7a91548dc474535c8254981deb36213"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.004435333001310937,
+      "process_s": 0.9719199170067441,
+      "child_cpu_s": 0.3817919999999617,
+      "output_bytes": 1150560,
+      "output_sha256": "88e2f719004adedf4ed72946720596ae3d676d8afbe467d49ff4c6666525e969"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.0061672500014537945,
+      "process_s": 1.0789559589902638,
+      "child_cpu_s": 0.4212110000000351,
+      "output_bytes": 1150560,
+      "output_sha256": "ff25c380cdca4e460e11ea29db0ef5aaa1946ebb976dbfdbc30d86757c74b909"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.006331041993689723,
+      "process_s": 1.055363124993164,
+      "child_cpu_s": 0.383215999999976,
+      "output_bytes": 1150560,
+      "output_sha256": "002ddff896c5f15e893bea457d14c0bdebf9c99a2e80d41b56fc365cab9e753b"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.005928833008510992,
+      "process_s": 1.0293938749964582,
+      "child_cpu_s": 0.42257400000002576,
+      "output_bytes": 1150560,
+      "output_sha256": "512f23e64a8872cdf65fb1e06be2519a08297bd64f447acd49656baa1a9a799f"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.005512916992302053,
+      "process_s": 1.0189413329935633,
+      "child_cpu_s": 0.38340699999996986,
+      "output_bytes": 1150560,
+      "output_sha256": "388f4227f8af3c5cfc149c52e6da88bd52492ad771b9f3a988e8151d6c94dc58"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.003935959000955336,
+      "process_s": 1.1167007500043837,
+      "child_cpu_s": 0.4545919999999839,
+      "output_bytes": 1150560,
+      "output_sha256": "fb73141c037160728c05413c984d7366f48dd4b449bb0ae18eadaddc68dd6228"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.006705249994411133,
+      "process_s": 1.011744292001822,
+      "child_cpu_s": 0.42609200000001124,
+      "output_bytes": 1150560,
+      "output_sha256": "bbe0b276c60b6b484cf8cdb198a45a31079ebc67a2a3e6ce330f9e77ac0d7321"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.006716667005093768,
+      "process_s": 1.0329883330123266,
+      "child_cpu_s": 0.4021600000000163,
+      "output_bytes": 1150560,
+      "output_sha256": "1b43e4987980a8e845908eebbf0edc3b7bcabfece6ed5da5d3e1b039511133da"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.00991237499692943,
+      "process_s": 1.0208267499983776,
+      "child_cpu_s": 0.43235799999997226,
+      "output_bytes": 1150560,
+      "output_sha256": "4739d2c7515e087fd66ac77d6a2db8fc1bbfb0ba885d52377a80c1af4bda54eb"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.005734916994697414,
+      "process_s": 1.0285347500030184,
+      "child_cpu_s": 0.43550100000004477,
+      "output_bytes": 1150560,
+      "output_sha256": "5ad0e19849dee659d0eb470daf606678b01630de2fffe78f3baeccf9be5b6c3f"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.006402500002877787,
+      "process_s": 1.0260101669991855,
+      "child_cpu_s": 0.42757099999999326,
+      "output_bytes": 1150560,
+      "output_sha256": "86d7ac7d0ddf526ee8510a082ab1c8130cead8d9b5eebab03b762511743aa27c"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": -1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.005950999999186024,
+      "process_s": 0.9819675409962656,
+      "child_cpu_s": 0.40225199999999717,
+      "output_bytes": 1150560,
+      "output_sha256": "b21ca121f19be52e87fef8f08cd5c342d905d4634a61c28c1ecc902355eec5f2"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.02774800000770483,
+      "process_s": 1.3377307080081664,
+      "child_cpu_s": 0.7321739999999579,
+      "output_bytes": 1178572,
+      "output_sha256": "4ce7139f141a5c9d949c77e133213c1d85197e9e0b610f31f007352367bc9fc0"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.008009375000256114,
+      "process_s": 1.1963955000101123,
+      "child_cpu_s": 0.7013640000000336,
+      "output_bytes": 1178572,
+      "output_sha256": "750745672e71d6c5c770451c297d483521c05654566789c5fe85287738494686"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.007056082991766743,
+      "process_s": 0.9997982919885544,
+      "child_cpu_s": 0.6075080000000028,
+      "output_bytes": 1178572,
+      "output_sha256": "07ae6a875d12e95e9c81bbad0d3d6ff900b82bb2d377d9a4a906cb4000171e65"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.004680958998505957,
+      "process_s": 1.0269460840063402,
+      "child_cpu_s": 0.6793389999999846,
+      "output_bytes": 1178572,
+      "output_sha256": "9547948f5f0fcb6faf249377f5282c85b82af27c323e67c1b8bd3b4a4f5385a0"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.004416499999933876,
+      "process_s": 1.0561661249957979,
+      "child_cpu_s": 0.673954000000009,
+      "output_bytes": 1178572,
+      "output_sha256": "9182c058397eb897423052553737f11d7953a5535497d701ea329f576beb45fd"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.007353749999310821,
+      "process_s": 1.0399249170004623,
+      "child_cpu_s": 0.6832540000000193,
+      "output_bytes": 1178572,
+      "output_sha256": "56c72ff0660f57bc2684fd797d35c7e10a247cbf2b5f41b6549391235f3961fe"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.006157291994895786,
+      "process_s": 1.0008786249964032,
+      "child_cpu_s": 0.5966430000000074,
+      "output_bytes": 1178572,
+      "output_sha256": "03163b302769de5b7ff65f7cca22b855b5ceb191baece7aeaa8e93d5ef1008e7"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.004764625002280809,
+      "process_s": 1.0737518329988234,
+      "child_cpu_s": 0.6672799999999626,
+      "output_bytes": 1178572,
+      "output_sha256": "1362eb6e84f50f05a0619f267e61dd590e05bf62fce4b2abbc369113dfda21f5"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.0050753749965224415,
+      "process_s": 1.0411559999920428,
+      "child_cpu_s": 0.6773740000000004,
+      "output_bytes": 1178572,
+      "output_sha256": "df69ff4186b3a39da93b221da850d66f559527ecf4bca2cff85dd0bde96eb498"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.00607245801074896,
+      "process_s": 1.0502426250022836,
+      "child_cpu_s": 0.6953269999999989,
+      "output_bytes": 1178572,
+      "output_sha256": "d3129a1a05b0fa83719772d4d1cbfd0aed9034f4483adadd01216097ef670df6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.00583845900837332,
+      "process_s": 1.0735086670028977,
+      "child_cpu_s": 0.7122830000000278,
+      "output_bytes": 1178572,
+      "output_sha256": "6566651b1df3f940572fee96f9f9cb5bce88885ba1e0eb2f093a50cd7343e121"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.005937875001109205,
+      "process_s": 1.0984083750081481,
+      "child_cpu_s": 0.7338959999999872,
+      "output_bytes": 1178572,
+      "output_sha256": "f994708be8acd0ee67f73726ccce94616dbc9b59e8c8aa9c42dda23811af9400"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.00946191699767951,
+      "process_s": 1.0419759170035832,
+      "child_cpu_s": 0.6640449999999873,
+      "output_bytes": 1178572,
+      "output_sha256": "ab27f73a73a25574a254ac3547dbb06375296ec77064ad78dc36014fc7d97af0"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.004759084011311643,
+      "process_s": 1.0377164170058677,
+      "child_cpu_s": 0.6808510000000041,
+      "output_bytes": 1178572,
+      "output_sha256": "6216256ad77bb8077a316c91ebc82d5c0ecb276d0bfb79f91e2508e63b50c851"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.006345999994664453,
+      "process_s": 0.9767964579950785,
+      "child_cpu_s": 0.6311850000000234,
+      "output_bytes": 1178572,
+      "output_sha256": "3536f2cd34ad2fff010d1b966e547864e59c32cb51a883af447d585fb6f45e3e"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.004781084004207514,
+      "process_s": 1.052721959000337,
+      "child_cpu_s": 0.6365419999999844,
+      "output_bytes": 1178572,
+      "output_sha256": "02f6a3e170d7e7e991a652c29daa1e41141f701511b07052fe38e19bcb66a77b"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.005849250010214746,
+      "process_s": 1.045447124997736,
+      "child_cpu_s": 0.639127999999971,
+      "output_bytes": 1178572,
+      "output_sha256": "ec5c0562c65dea9a6082bfb35b7c617ee62215974471368db53c718116d6687d"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.006226416997378692,
+      "process_s": 1.0953494580026018,
+      "child_cpu_s": 0.686743000000007,
+      "output_bytes": 1178572,
+      "output_sha256": "d9396816f8ce38898a33edb45fdc80bab30842a01f1e4fe9d2f289cc696fad98"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.004725416991277598,
+      "process_s": 1.0875808329874417,
+      "child_cpu_s": 0.7293680000000151,
+      "output_bytes": 1178572,
+      "output_sha256": "c71dc74cb057629b0b5c66e16b1e2ef0f50219c17472eaf107e0dbd7d5e8c0ef"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.004821375012397766,
+      "process_s": 1.0368795829999726,
+      "child_cpu_s": 0.6252569999999835,
+      "output_bytes": 1178572,
+      "output_sha256": "ba6e52ee5ccf8a4da7990d66992543652657805d642dde91b10a7dfa7a829401"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.005522958002984524,
+      "process_s": 1.0647730000055162,
+      "child_cpu_s": 0.7272580000000417,
+      "output_bytes": 1178572,
+      "output_sha256": "06ef239a657f4187a61a5582048c5dd15ffe8fc3d053fa1f48f9c0c85a4f8a72"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.006563875009305775,
+      "process_s": 1.074744333003764,
+      "child_cpu_s": 0.6469909999999999,
+      "output_bytes": 1178572,
+      "output_sha256": "b0d0eae9ab8f2b58a946516213123f8e2c5cc612711339001ebe8cf2a86104c6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.0066784579976229,
+      "process_s": 1.105245874990942,
+      "child_cpu_s": 0.7335279999999571,
+      "output_bytes": 1178572,
+      "output_sha256": "467a3eca9eef45e9f9420f3145eccfa3397af2755d49658cc5a0a80dbbebc350"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.0059916669997619465,
+      "process_s": 1.0880805420019897,
+      "child_cpu_s": 0.7095199999999977,
+      "output_bytes": 1178572,
+      "output_sha256": "db25ad71631b170d6099822355ac190961daf2ebfb9b27c3cb9b282319a95bea"
+    },
+    {
+      "codec": "hevc",
+      "offset": 0,
+      "audio": 1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.004219916008878499,
+      "process_s": 1.0648588750045747,
+      "child_cpu_s": 0.6633330000000015,
+      "output_bytes": 1178572,
+      "output_sha256": "bc5c275eb5e983f9710fc859f686cd57d91e70bb8f5905fb7f39641e04d50797"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.017471250001108274,
+      "process_s": 1.700886000005994,
+      "child_cpu_s": 0.6201870000000298,
+      "output_bytes": 1168044,
+      "output_sha256": "1144c60bea27e16247610e0bfe37e1a48af0dd8bbc5192244bd9974b5114840c"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.012921416986500844,
+      "process_s": 1.7566574169904925,
+      "child_cpu_s": 0.5638579999999891,
+      "output_bytes": 1168044,
+      "output_sha256": "74f94411b69ec0bc3277a83ac8498e3cd8b8c3f8e3a6c4f70c4d08c894ae37bd"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.0099144159903517,
+      "process_s": 1.6085142079973593,
+      "child_cpu_s": 0.5643220000000255,
+      "output_bytes": 1168044,
+      "output_sha256": "b570ecb5b1461910eeb3e613fb492eea39902ace1a26e820d497a99c053208d6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.004951625000103377,
+      "process_s": 1.3413463339966256,
+      "child_cpu_s": 0.5262719999999987,
+      "output_bytes": 1168044,
+      "output_sha256": "3c48154738461fe9ca208f77f924163aa73cf46ee84b94a5a386f6e6daa7f259"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.005930457991780713,
+      "process_s": 1.3432462079945253,
+      "child_cpu_s": 0.4947349999999773,
+      "output_bytes": 1168044,
+      "output_sha256": "e389133db576a7fc3d554f9812c6b4c1817be473f057dcd343ecd2d200e416a2"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.0048026250005932525,
+      "process_s": 1.4472135830001207,
+      "child_cpu_s": 0.4962080000000313,
+      "output_bytes": 1168044,
+      "output_sha256": "c2e563ded6ba5ac7743c01cdcaaa24e5ccb6e9f046ce66d21d40e729cf0f9730"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.006738290991052054,
+      "process_s": 1.3784764159936458,
+      "child_cpu_s": 0.5493640000000042,
+      "output_bytes": 1168044,
+      "output_sha256": "e8df6d295cf07c3884ef22ea3ec4e992ea5085028a1174d31d40069540bfd749"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.0055337920057354495,
+      "process_s": 1.4219162500085076,
+      "child_cpu_s": 0.5313299999999828,
+      "output_bytes": 1168044,
+      "output_sha256": "97180f146f1183c243c96b9e04e19d48c96aaad857fcbcb9895b3dd8ab1b1307"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.006212666994542815,
+      "process_s": 1.4600405839883024,
+      "child_cpu_s": 0.5392539999999784,
+      "output_bytes": 1168044,
+      "output_sha256": "2773e95fa31b8cf0f0b9fd18d9796a35c3c9334ea7191ad1d6140785c8c3ef59"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.006324916001176462,
+      "process_s": 1.4376531659945613,
+      "child_cpu_s": 0.5423199999999824,
+      "output_bytes": 1168044,
+      "output_sha256": "5dce329633d15d2cfb204907963344e274cf6a0498dcc78e431b45af65ff3449"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.005796707991976291,
+      "process_s": 1.3238709579891292,
+      "child_cpu_s": 0.5383910000000398,
+      "output_bytes": 1168044,
+      "output_sha256": "eacc1267b7a062127e0df8a5ecfd184615d4e14d25b51dd7aee4fa511fdb884f"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.006515084009151906,
+      "process_s": 1.4180720419972204,
+      "child_cpu_s": 0.5294799999999853,
+      "output_bytes": 1168044,
+      "output_sha256": "8bfed3009a238ba8798e111f3be86ea0cc8fdaf963a1e105997d151b77815f77"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.00664199999300763,
+      "process_s": 1.390452291991096,
+      "child_cpu_s": 0.5354050000000115,
+      "output_bytes": 1168044,
+      "output_sha256": "7a51106aba0ac330c1ae78bc3aab0de1db8cbb41984046da83014b28e51a5bbf"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.005761541004176252,
+      "process_s": 1.4075933749991236,
+      "child_cpu_s": 0.5665479999999974,
+      "output_bytes": 1168044,
+      "output_sha256": "a0bd919506c8b8876a5e2e3395f2af261a794e159252e4e294aee6369042e9d6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.007441583002218977,
+      "process_s": 1.3837701250013197,
+      "child_cpu_s": 0.5307639999999907,
+      "output_bytes": 1168044,
+      "output_sha256": "5fc2a700056a89e6cc432a17e6d34b60b1a32e6315771ab8489100a130e2ba2c"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.006464792008046061,
+      "process_s": 1.294791874999646,
+      "child_cpu_s": 0.4921059999999784,
+      "output_bytes": 1168044,
+      "output_sha256": "f3bc5f414f281bec3b1cc4034d55277b6a2c63cf33d7a8dd7e429856c7f9516b"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.005530291993636638,
+      "process_s": 1.4808399169996846,
+      "child_cpu_s": 0.5813360000000358,
+      "output_bytes": 1168044,
+      "output_sha256": "b44163d26d6d62d41caa9eaadc652dd3f9c5ffd748d84cb27c24d2b829c20b2a"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.005570042005274445,
+      "process_s": 1.6301674999995157,
+      "child_cpu_s": 0.6246459999999701,
+      "output_bytes": 1168044,
+      "output_sha256": "296894d3538e116a1325ddad79a923a9c329cbe0122bcb68faa4752376b03ef2"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.00840112500009127,
+      "process_s": 1.4823296669928823,
+      "child_cpu_s": 0.5794050000000368,
+      "output_bytes": 1168044,
+      "output_sha256": "34eb4aa11ef33d8dfa2dbc194a0fc253e2ab9b7317e5946815d999e81a449833"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.004588291005347855,
+      "process_s": 1.4038734159985324,
+      "child_cpu_s": 0.5355669999999719,
+      "output_bytes": 1168044,
+      "output_sha256": "0e3636820634dd1295c780e88ca28d1dbbc1a62a1c20956cbbd67511374648db"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.004819750000024214,
+      "process_s": 1.3698932909901487,
+      "child_cpu_s": 0.5225630000000052,
+      "output_bytes": 1168044,
+      "output_sha256": "a9d44551f742f1b87458ed85209e9a4c24ef27d38abb891cac2095d9d43b18eb"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.006208457998582162,
+      "process_s": 1.4003463330009254,
+      "child_cpu_s": 0.5520029999999849,
+      "output_bytes": 1168044,
+      "output_sha256": "5778fd568dbac727ff71c1ed31f32c65dc52718d21b6cb4fc3492f06a44c862f"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.005039916999521665,
+      "process_s": 1.4594853339949623,
+      "child_cpu_s": 0.5509540000000186,
+      "output_bytes": 1168044,
+      "output_sha256": "fcd9c4ec8d28bd2eb8ca96514f1e8f4c1488fc3192be801972165bc35f2cbe85"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.006309874996077269,
+      "process_s": 1.3354381249955622,
+      "child_cpu_s": 0.5201100000000309,
+      "output_bytes": 1168044,
+      "output_sha256": "6a993a06bd67cb1b3f6b5cd54bc958e2bffddf3bbdf209e9f88bf2c755a44da6"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": -1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.00642350000271108,
+      "process_s": 1.3567720830033068,
+      "child_cpu_s": 0.5104079999999414,
+      "output_bytes": 1168044,
+      "output_sha256": "17296ae736a8e93d2b98344824fda3a64032053e272199e7e7799080e991dd1a"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "baseline",
+      "spawn_s": 0.01717162500426639,
+      "process_s": 1.5377318329992704,
+      "child_cpu_s": 0.7195460000000082,
+      "output_bytes": 1196996,
+      "output_sha256": "0c38b788b1e7cd89147e7242a707f7fd7923dfe69fe4af26b03e67dbd22085fb"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "known-mkv",
+      "spawn_s": 0.016717624996090308,
+      "process_s": 1.6404816659924109,
+      "child_cpu_s": 0.6930229999999966,
+      "output_bytes": 1196996,
+      "output_sha256": "6ee6ae177f67780e8940ff9d9d193c39e2c977b85237e4b4ca13401e1630e44d"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-256k",
+      "spawn_s": 0.010960208004689775,
+      "process_s": 1.479263916000491,
+      "child_cpu_s": 0.7184710000000507,
+      "output_bytes": 1196996,
+      "output_sha256": "9415127d24df5db689ae48f9feb6783a5c2a1929133cfc6a5f5ced44a6df27a9"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "probe-64k",
+      "spawn_s": 0.008609000011347234,
+      "process_s": 1.4054379590088502,
+      "child_cpu_s": 0.7114279999999695,
+      "output_bytes": 1196996,
+      "output_sha256": "df0fe2e81e8a19cca5de78f4be98056a016c0c429e39dc30504808b5ff225a86"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 0,
+      "profile": "decode-1",
+      "spawn_s": 0.006028791991411708,
+      "process_s": 1.3952941249881405,
+      "child_cpu_s": 0.6694229999999806,
+      "output_bytes": 1196996,
+      "output_sha256": "a27b3c56611718d704f3e93f82bdd3f28e57dd013b56c5206c7c75f4194182d3"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "decode-1",
+      "spawn_s": 0.007569708002847619,
+      "process_s": 1.3620806249964517,
+      "child_cpu_s": 0.6510570000000087,
+      "output_bytes": 1196996,
+      "output_sha256": "b648e98836b833720aa11ee75624531cb7f5d3951a07129ff83ee097e3278aaa"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-64k",
+      "spawn_s": 0.0056834999995771796,
+      "process_s": 1.39238387500518,
+      "child_cpu_s": 0.6511490000000464,
+      "output_bytes": 1196996,
+      "output_sha256": "e657c4da301228d14065cfa133bd029deae99ee057c2b0765aa038ec983e822a"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "probe-256k",
+      "spawn_s": 0.007779207997373305,
+      "process_s": 1.3762244579993421,
+      "child_cpu_s": 0.6958439999999513,
+      "output_bytes": 1196996,
+      "output_sha256": "5401fdbf8967c833d77c6167270b8de2d7c6b3407472812ec107eb6f326e99d2"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "known-mkv",
+      "spawn_s": 0.006991207992541604,
+      "process_s": 1.5372802909987513,
+      "child_cpu_s": 0.7349760000000316,
+      "output_bytes": 1196996,
+      "output_sha256": "009c84c89db586e12bb4afcb63c53d84730668df4e4b67a5912f0c43ced0edea"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 1,
+      "profile": "baseline",
+      "spawn_s": 0.006225916993571445,
+      "process_s": 1.3992733339982806,
+      "child_cpu_s": 0.7093949999999865,
+      "output_bytes": 1196996,
+      "output_sha256": "19c7ae65e2eb4811dc772a9d39fe41a67bf636f7d78b6f44a4b96a866992d256"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "baseline",
+      "spawn_s": 0.0050534579931991175,
+      "process_s": 1.550663166999584,
+      "child_cpu_s": 0.7402599999999921,
+      "output_bytes": 1196996,
+      "output_sha256": "e3278ebce80571f43c9b9116515e02be2b0622ec9f0d8becb2c8bd94028bb1c7"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "known-mkv",
+      "spawn_s": 0.006879707987536676,
+      "process_s": 1.4446046669909265,
+      "child_cpu_s": 0.7081120000000141,
+      "output_bytes": 1196996,
+      "output_sha256": "556c2a757c78b698d6d0083380e5e138b8903b1c1de042110c1f1892562eef8d"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-256k",
+      "spawn_s": 0.004019083993625827,
+      "process_s": 1.4405810000025667,
+      "child_cpu_s": 0.6797739999999948,
+      "output_bytes": 1196996,
+      "output_sha256": "96947615101bbab3d7a8ddae2b9c3f2cfc3e06a5921ebb26311fd658c8b61000"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "probe-64k",
+      "spawn_s": 0.006267749995458871,
+      "process_s": 1.4433168749965262,
+      "child_cpu_s": 0.6985650000000021,
+      "output_bytes": 1196996,
+      "output_sha256": "df90bba29da5f83662b0cefa496f72fb80ac36ff07fde796c5d859687fc10844"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 2,
+      "profile": "decode-1",
+      "spawn_s": 0.00634462499874644,
+      "process_s": 1.3497150000039255,
+      "child_cpu_s": 0.663180999999966,
+      "output_bytes": 1196996,
+      "output_sha256": "bd90528054fd42003657e61b20cb5549924335b9433f5e00f84b79b472a61a6a"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "decode-1",
+      "spawn_s": 0.0041777500009629875,
+      "process_s": 1.3638800420012558,
+      "child_cpu_s": 0.6526390000000504,
+      "output_bytes": 1196996,
+      "output_sha256": "3ec0b21f2e27c2e0e79877c354189bc7fca045513a8bf4012d16f1a3863427b0"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-64k",
+      "spawn_s": 0.005721916997572407,
+      "process_s": 1.424556500001927,
+      "child_cpu_s": 0.6942549999999557,
+      "output_bytes": 1196996,
+      "output_sha256": "ab8eaa8bc4da4eaf2a848f99ca0c1286a48cb3d872fea4b4980e514ffe87e423"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "probe-256k",
+      "spawn_s": 0.013371416993322782,
+      "process_s": 1.4406531249987893,
+      "child_cpu_s": 0.7074490000000111,
+      "output_bytes": 1196996,
+      "output_sha256": "56edcd128785c27b5468f1486f44c088df35b2ff28c3a89e819dbc7e662444bd"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "known-mkv",
+      "spawn_s": 0.005567084008362144,
+      "process_s": 1.3953234590007924,
+      "child_cpu_s": 0.6946180000000339,
+      "output_bytes": 1196996,
+      "output_sha256": "a2235cdeb29eb7f662776c1eb47b4156b56b958f319a662d88ae4c0ca849df5d"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 3,
+      "profile": "baseline",
+      "spawn_s": 0.005636292000417598,
+      "process_s": 1.5022453330020653,
+      "child_cpu_s": 0.6893799999999857,
+      "output_bytes": 1196996,
+      "output_sha256": "d7a3e9b9547413d831ee234ac2a5f665815f04795255caed1e14a6595b22e29d"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "baseline",
+      "spawn_s": 0.0067197500029578805,
+      "process_s": 1.5970539999980247,
+      "child_cpu_s": 0.7276890000000122,
+      "output_bytes": 1196996,
+      "output_sha256": "6225850b1986a41776483cd592f8a32d2851486ae36366c6a13b12eb95559614"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "known-mkv",
+      "spawn_s": 0.008202707991586067,
+      "process_s": 2.4645867079962045,
+      "child_cpu_s": 0.7348670000000084,
+      "output_bytes": 1196996,
+      "output_sha256": "edf518a455c75b1f25006d22570fdbb7fca8d49b4141cf39a3bba6366738e62b"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-256k",
+      "spawn_s": 0.003966000003856607,
+      "process_s": 1.4063074580044486,
+      "child_cpu_s": 0.6820799999999707,
+      "output_bytes": 1196996,
+      "output_sha256": "d38842f992fbea54ddd58e3ba8acbfb2bcaf1e08485f783a190aaa2ff345b2ce"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "probe-64k",
+      "spawn_s": 0.005944000004092231,
+      "process_s": 1.3812067079998087,
+      "child_cpu_s": 0.7058389999999832,
+      "output_bytes": 1196996,
+      "output_sha256": "fb85046cc42532d574c9729780b39d9246cf09e3dc397b7ea82e1dfbd7abc531"
+    },
+    {
+      "codec": "hevc",
+      "offset": 37,
+      "audio": 1,
+      "trial": 4,
+      "profile": "decode-1",
+      "spawn_s": 0.005133208003826439,
+      "process_s": 1.3488892080058577,
+      "child_cpu_s": 0.6281689999999998,
+      "output_bytes": 1196996,
+      "output_sha256": "1a49cf5ca3a313b2fbf5b3e4e7bebc0451e8e30db835f5ac44fe745a01e11b10"
+    }
+  ],
+  "recorded_at": "2026-11-13T07:19:09.438121+00:00",
+  "hardware": "Apple M1",
+  "ffmpeg_version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "conclusion": "No experiment promoted. Production video-only aggregate median differences were about 2%, with individual-case regressions; production flags and quality remain unchanged."
+}

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -8,7 +9,11 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-import benchmark as b
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+if __package__:
+    from . import benchmark as b
+else:
+    import benchmark as b
 
 
 class BenchmarkTests(unittest.TestCase):

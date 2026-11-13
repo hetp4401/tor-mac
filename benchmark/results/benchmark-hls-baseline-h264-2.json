@@ -1,0 +1,375 @@
+{
+  "label": "baseline-h264-2",
+  "fixture": "h264",
+  "source_identity_sha256": "2e37f9d0aebd5881de5bc1f72422b66d7ac4dcee3f8581f4dc66ccc4ac9fc579",
+  "app": "tor-cold-bench",
+  "version": 3,
+  "code": "3d7514f38a9f",
+  "replica": 1,
+  "machine": 26,
+  "public_player_requests": true,
+  "internal_auth_header": false,
+  "seek_hint": false,
+  "connection_state": "fresh-process",
+  "client_transport": "pooled HTTP/1.1, two parallel media requests",
+  "source_condition": "unique Tor file ID; generated fixture already stored upstream",
+  "network_sequence_s": 4.3318,
+  "stages": [
+    {
+      "stage": "master",
+      "headers_s": 1.1791,
+      "first_byte_s": 1.1791,
+      "first_non_null_ts_s": null,
+      "complete_s": 1.1792,
+      "bytes": 336,
+      "from_master_start_s": 1.1792
+    },
+    {
+      "stage": "video_playlist",
+      "headers_s": 0.0376,
+      "first_byte_s": 0.0376,
+      "first_non_null_ts_s": null,
+      "complete_s": 0.0378,
+      "bytes": 1511,
+      "from_master_start_s": 1.2177
+    },
+    {
+      "stage": "audio_playlist",
+      "headers_s": 0.1188,
+      "first_byte_s": 0.1188,
+      "first_non_null_ts_s": null,
+      "complete_s": 0.1267,
+      "bytes": 1691,
+      "from_master_start_s": 1.3071
+    },
+    {
+      "stage": "startup_video",
+      "headers_s": 0.045,
+      "first_byte_s": 0.045,
+      "first_non_null_ts_s": 0.7194,
+      "complete_s": 0.8188,
+      "bytes": 652360,
+      "from_master_start_s": 2.1301
+    },
+    {
+      "stage": "startup_audio",
+      "headers_s": 0.0449,
+      "first_byte_s": 0.0449,
+      "first_non_null_ts_s": 0.0449,
+      "complete_s": 0.1299,
+      "bytes": 33652,
+      "from_master_start_s": 1.4408
+    },
+    {
+      "stage": "seek_video",
+      "headers_s": 0.1895,
+      "first_byte_s": 0.1895,
+      "first_non_null_ts_s": 1.5588,
+      "complete_s": 1.7229,
+      "bytes": 662512,
+      "from_master_start_s": 3.856
+    },
+    {
+      "stage": "seek_audio",
+      "headers_s": 0.1049,
+      "first_byte_s": 0.105,
+      "first_non_null_ts_s": 0.6143,
+      "complete_s": 0.6521,
+      "bytes": 30456,
+      "from_master_start_s": 2.7925
+    },
+    {
+      "stage": "next1_video",
+      "headers_s": 0.0405,
+      "first_byte_s": 0.0405,
+      "first_non_null_ts_s": 0.1179,
+      "complete_s": 0.1746,
+      "bytes": 455148,
+      "from_master_start_s": 4.0333
+    },
+    {
+      "stage": "next1_audio",
+      "headers_s": 0.057,
+      "first_byte_s": 0.057,
+      "first_non_null_ts_s": 0.057,
+      "complete_s": 0.0847,
+      "bytes": 31020,
+      "from_master_start_s": 3.9573
+    },
+    {
+      "stage": "next2_video",
+      "headers_s": 0.0607,
+      "first_byte_s": 0.0607,
+      "first_non_null_ts_s": 0.0607,
+      "complete_s": 0.1191,
+      "bytes": 477144,
+      "from_master_start_s": 4.1533
+    },
+    {
+      "stage": "next2_audio",
+      "headers_s": 0.0377,
+      "first_byte_s": 0.0377,
+      "first_non_null_ts_s": 0.0377,
+      "complete_s": 0.0598,
+      "bytes": 28764,
+      "from_master_start_s": 4.0946
+    },
+    {
+      "stage": "next3_video",
+      "headers_s": 0.0426,
+      "first_byte_s": 0.0426,
+      "first_non_null_ts_s": 0.0426,
+      "complete_s": 0.1746,
+      "bytes": 417360,
+      "from_master_start_s": 4.3289
+    },
+    {
+      "stage": "next3_audio",
+      "headers_s": 0.0307,
+      "first_byte_s": 0.0307,
+      "first_non_null_ts_s": 0.0307,
+      "complete_s": 0.0509,
+      "bytes": 30080,
+      "from_master_start_s": 4.2098
+    }
+  ],
+  "pairs": [
+    {
+      "case": "startup",
+      "segment": 0,
+      "position_s": 0.0,
+      "pair_ready_s": 0.8192,
+      "from_master_start_s": 2.1301
+    },
+    {
+      "case": "seek",
+      "segment": 37,
+      "position_s": 37.0,
+      "pair_ready_s": 1.7234,
+      "from_master_start_s": 3.856
+    },
+    {
+      "case": "next1",
+      "segment": 38,
+      "position_s": 38.0,
+      "pair_ready_s": 0.1756,
+      "from_master_start_s": 4.0333
+    },
+    {
+      "case": "next2",
+      "segment": 39,
+      "position_s": 39.0,
+      "pair_ready_s": 0.1192,
+      "from_master_start_s": 4.1533
+    },
+    {
+      "case": "next3",
+      "segment": 40,
+      "position_s": 40.0,
+      "pair_ready_s": 0.1748,
+      "from_master_start_s": 4.3289
+    }
+  ],
+  "validation": [
+    {
+      "stage": "startup_video",
+      "metadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "start_time": "10.041667",
+        "nb_read_frames": "24"
+      },
+      "bytes": 652360,
+      "sha256": "dff56bfc7c13419011fdc04b816a582269bb4c6ba025c51c5c7eb596eb49278b"
+    },
+    {
+      "stage": "startup_audio",
+      "metadata": {
+        "codec_name": "aac",
+        "start_time": "9.978344",
+        "nb_read_frames": "48"
+      },
+      "bytes": 33652,
+      "sha256": "2b038aa3d3d749aab30b628165934707ff19d96220ec2da2c8d682a1f0f312c9"
+    },
+    {
+      "stage": "seek_video",
+      "metadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "start_time": "47.041667",
+        "nb_read_frames": "24"
+      },
+      "bytes": 662512,
+      "sha256": "f54c021a91a047fc7026c003e0eecbabbc7ed2298f04df4cff32a7ef4e69e399"
+    },
+    {
+      "stage": "seek_audio",
+      "metadata": {
+        "codec_name": "aac",
+        "start_time": "46.991667",
+        "nb_read_frames": "48"
+      },
+      "bytes": 30456,
+      "sha256": "c2a2df159601f252b4ca1c976c06e298549069603899e9a974ab48fd1a054f13"
+    },
+    {
+      "stage": "next1_video",
+      "metadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "start_time": "48.021000",
+        "nb_read_frames": "24"
+      },
+      "bytes": 455148,
+      "sha256": "4628a14316c634473ce83908670f194e064682ef5342a2207eb305f9d94035b7"
+    },
+    {
+      "stage": "next1_audio",
+      "metadata": {
+        "codec_name": "aac",
+        "start_time": "47.994344",
+        "nb_read_frames": "48"
+      },
+      "bytes": 31020,
+      "sha256": "6ce9bc65228b5195cc6f356960a351a91c318d875ebd254c3bc9524d86ca3cb1"
+    },
+    {
+      "stage": "next2_video",
+      "metadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "start_time": "49.021000",
+        "nb_read_frames": "24"
+      },
+      "bytes": 477144,
+      "sha256": "cc75a6f239822758eb9a95084fd0f33ba7923e2e58109588ab2c060ba948b37a"
+    },
+    {
+      "stage": "next2_audio",
+      "metadata": {
+        "codec_name": "aac",
+        "start_time": "48.997000",
+        "nb_read_frames": "47"
+      },
+      "bytes": 28764,
+      "sha256": "8482c20eacdc66ec8baf9e8508c80ae7f3bd28afaaf3cae5705f25c3b1099395"
+    },
+    {
+      "stage": "next3_video",
+      "metadata": {
+        "codec_name": "h264",
+        "width": 1280,
+        "height": 720,
+        "start_time": "50.021000",
+        "nb_read_frames": "24"
+      },
+      "bytes": 417360,
+      "sha256": "ae2472ffb55682eb91ee3b04607c51d587d725ebf8b3eedd733c913c0493ae28"
+    },
+    {
+      "stage": "next3_audio",
+      "metadata": {
+        "codec_name": "aac",
+        "start_time": "49.978344",
+        "nb_read_frames": "48"
+      },
+      "bytes": 30080,
+      "sha256": "a3f822d0710e469dc85cb4671ab87b5f944e35835967910dfe973d4618c69ea9"
+    }
+  ],
+  "before": {
+    "code": "3d7514f38a9f",
+    "replica": 1,
+    "mode": "legacy",
+    "mac_jobs": 0,
+    "local_ffmpeg_jobs": 0,
+    "mac_completed": {
+      "mac-4": 0
+    },
+    "recent_mac_stages": []
+  },
+  "after": {
+    "code": "3d7514f38a9f",
+    "replica": 1,
+    "mode": "legacy",
+    "mac_jobs": 2,
+    "local_ffmpeg_jobs": 3,
+    "mac_completed": {
+      "mac-4": 5
+    },
+    "recent_mac_stages": [
+      {
+        "at": 1794555204,
+        "piece": 0,
+        "cls": 0,
+        "read_s": 0.0,
+        "mac_s": 0.89,
+        "sent_mb": 0.271,
+        "mac": "mac-4",
+        "up_s": 0.1,
+        "convert_s": 0.76,
+        "down_s": 0.02
+      },
+      {
+        "at": 1794555204,
+        "piece": 1,
+        "cls": 1,
+        "read_s": 0.0,
+        "mac_s": 1.0,
+        "sent_mb": 0.476,
+        "mac": "mac-4",
+        "up_s": 0.12,
+        "convert_s": 0.85,
+        "down_s": 0.03
+      },
+      {
+        "at": 1794555206,
+        "piece": 37,
+        "cls": 0,
+        "read_s": 0.05,
+        "mac_s": 1.09,
+        "sent_mb": 1.539,
+        "mac": "mac-4",
+        "up_s": 0.01,
+        "convert_s": 1.03,
+        "down_s": 0.05
+      },
+      {
+        "at": 1794555208,
+        "piece": 42,
+        "cls": 1,
+        "read_s": 0.01,
+        "mac_s": 0.88,
+        "sent_mb": 0.634,
+        "mac": "mac-4",
+        "up_s": 0.01,
+        "convert_s": 0.62,
+        "down_s": 0.25
+      },
+      {
+        "at": 1794555209,
+        "piece": 44,
+        "cls": 1,
+        "read_s": 0.01,
+        "mac_s": 0.77,
+        "sent_mb": 0.959,
+        "mac": "mac-4",
+        "up_s": 0.02,
+        "convert_s": 0.71,
+        "down_s": 0.04
+      }
+    ]
+  },
+  "semantic_source_sha256": "91e49ece51f0775ae691959acb3de4fc5f64bca2fbdf042c90d15fd967df2391",
+  "worker_revision": "b88f8ef8d90e697c9a10df23ff8bc910b0f1bcac",
+  "benchmark_env": {
+    "MAC_INPUT_MODE": "legacy",
+    "TOR_COLD_PRIORITY_MS": null,
+    "TOR_PROBE_WINDOWS": null
+  }
+}

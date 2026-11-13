@@ -21,4 +21,6 @@ The first uncached seek was slower: H264 0.964 → 1.834 seconds, HDR 1.230 → 
 
 The initial source-URL prototype used open-ended upstream reads and regressed latency and traffic. It was not enabled in Tor. Bounded reads and Mac-side compact preparation fixed that over-reading: final cold seeks received about 3.67/4.72 MB on the Mac, and warm source seeks required zero new media bytes. Every final source conversion reported indexed preparation. The initial prototype artifact is retained as evidence; its preparation harness used 1 MiB blocks, so it is not the final matched-configuration comparison.
 
-The harness hosts only generated media. `/run` and `/results` require its admin bearer; `/mac-source/<id>` requires the source bearer. Public `/fixture/<id>` redirects expose only the two generated samples for Tor integration checks. The temporary benchmark app and isolated Mac workflow should be removed/stopped after verification.
+The harness hosts only generated media. `/run` and `/results` require its admin bearer; `/mac-source/<id>` requires the source bearer. Public `/fixture/<id>` redirects expose only the explicitly generated samples for Tor integration checks. The temporary benchmark app and isolated Mac workflow should be removed/stopped after verification.
+
+Public-player startup and verified cold-source seek measurements are documented in [HLS_README.md](HLS_README.md), including the small-fixture cache limitation and the larger-source comparison.

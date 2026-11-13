@@ -27,7 +27,7 @@ SOURCE_KEY = os.environ.get("BENCH_SOURCE_KEY", "")
 ADMIN_KEY = os.environ.get("BENCH_ADMIN_KEY", "")
 MAC_KEY = os.environ.get("MAC_KEY", "")
 PUBLIC_URL = os.environ.get("BENCH_PUBLIC_URL", "https://tor-mac-bench.billybishop4-workers.xyz")
-FIXTURES = {"h264": "h264-sdr-720p.mkv", "hevc_hdr": "hevc-hdr-1080p.mkv"}
+FIXTURES = {"h264": "h264-sdr-720p.mkv", "hevc_hdr": "hevc-hdr-1080p.mkv", "hevc_hdr_long": "hevc-hdr-1080p-240s.mkv", "hevc_hdr_xlong": "hevc-hdr-1080p-960s.mkv"}
 IDS = {name: hashlib.sha256(filename.encode()).hexdigest()[:32] for name, filename in FIXTURES.items()}
 FILES = {IDS[name]: ROOT / filename for name, filename in FIXTURES.items()}
 METRICS = collections.defaultdict(lambda: {"requests": 0, "bytes": 0, "ranges": []})
@@ -35,6 +35,7 @@ LOCK = threading.Lock()
 RUN_LOCK = threading.Lock()
 STATE = {"ready": False, "error": None, "run": None, "rows": []}
 HARNESS_REVISION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+PROFILES = ("baseline", "known-mkv", "probe-256k", "probe-64k", "decode-1")
 
 
 def command(cmd, timeout=600):
@@ -49,6 +50,15 @@ def generate():
     for name, filename in FIXTURES.items():
         target = ROOT / filename
         if target.exists() and target.stat().st_size:
+            continue
+        if name in ("hevc_hdr_long", "hevc_hdr_xlong"):
+            listing = ROOT / "concat-list.txt"
+            listing.write_text("file 'hevc-hdr-1080p.mkv'\n" * (16 if name == "hevc_hdr_xlong" else 4))
+            try:
+                command(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+                         "-c", "copy", str(target)])
+            finally:
+                listing.unlink(missing_ok=True)
             continue
         hdr = name == "hevc_hdr"
         size = "1920x1080" if hdr else "1280x720"
@@ -110,8 +120,16 @@ def post(url, body, content_type):
         with urllib.request.urlopen(req, timeout=150) as response:
             headers_at = time.perf_counter()
             data = response.read()
-            return data, {"http_s": time.perf_counter() - started, "headers_s": headers_at - started,
-                          "upload_bytes": len(body), "output_bytes": len(data), "http_status": response.status}
+            finished = time.perf_counter()
+            server = {}
+            for item in response.headers.get("Server-Timing", "").split(","):
+                match = re.fullmatch(r"\s*(upload|process|spawn);dur=([0-9.]+)\s*", item)
+                if match:
+                    server["server_" + match[1] + "_s"] = float(match[2]) / 1000
+            return data, {"http_s": finished - started, "headers_s": headers_at - started,
+                          "response_download_s": finished - headers_at,
+                          "upload_bytes": len(body), "output_bytes": len(data), "http_status": response.status,
+                          "response_profile": response.headers.get("X-Mac-Profile"), **server}
     except urllib.error.HTTPError as e:
         # Error content deliberately excluded: a remote error might echo a signed source URL.
         raise RuntimeError(f"Mac HTTP {e.code}") from None
@@ -129,7 +147,7 @@ def counters(key):
         return {"requests": m["requests"], "bytes": m["bytes"]}
 
 
-def validate(data):
+def validate(data, pixels=False):
     p = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-show_entries", "stream=codec_name,width,height,start_time,duration,nb_read_frames:format=duration",
                         "-of", "json", "pipe:0"], input=data, capture_output=True, timeout=20)
     if p.returncode or not data.startswith(b"G"):
@@ -138,10 +156,19 @@ def validate(data):
     video = next((s for s in info.get("streams", []) if s.get("codec_name") == "h264"), None)
     if not video:
         raise RuntimeError("Output has no H264 video")
-    return {"video": video, "duration_s": info.get("format", {}).get("duration")}
+    result = {"video": video, "duration_s": info.get("format", {}).get("duration")}
+    if pixels:
+        p = subprocess.run(["ffmpeg", "-v", "error", "-i", "pipe:0", "-map", "0:v:0", "-f", "framemd5", "pipe:1"],
+                           input=data, capture_output=True, timeout=20)
+        if p.returncode:
+            raise RuntimeError("Output frames did not decode")
+        hashes = [line.rsplit(b",", 1)[-1].strip() for line in p.stdout.splitlines() if line and not line.startswith(b"#")]
+        result["decoded_frames_sha256"] = hashlib.sha256(b"\n".join(hashes)).hexdigest()
+        result["decoded_frames"] = len(hashes)
+    return result
 
 
-def one(mac_url, fixture, mode, index, label):
+def one(mac_url, fixture, mode, index, label, profile=None):
     key, info = IDS[fixture], old.probed[IDS[fixture]]
     requested_start, length, _, _ = old.piece_cut(key, index)
     old_t0, cpu0 = time.perf_counter(), time.process_time()
@@ -149,12 +176,17 @@ def one(mac_url, fixture, mode, index, label):
     if mode == "binary":
         body, audio = old.mac_body(key, index)
         prep_s, prep_cpu = time.perf_counter() - old_t0, time.process_time() - cpu0
-        q = urllib.parse.urlencode({"t": info["start"] + requested_start, "l": length, "s": info["start"],
-                                   "a": audio, "h": info["hdr"], "w": info["w"], "p": 0})
+        query = {"t": info["start"] + requested_start, "l": length, "s": info["start"],
+                 "a": audio, "h": info["hdr"], "w": info["w"], "p": 0}
+        if profile is not None:
+            query["profile"] = profile
+        q = urllib.parse.urlencode(query)
         data, timings = post(mac_url.rstrip("/") + "/convert?" + q, body, "application/octet-stream")
+        if profile not in (None, "baseline") and timings.get("response_profile") != profile:
+            raise RuntimeError("Mac did not acknowledge requested benchmark profile")
     else:
         body = json.dumps({"source": source_spec(key), "start": info["start"] + requested_start, "duration": length,
-                           "source_start": info["start"], "audio": info["a"], "hdr": info["hdr"], "width": info["w"],
+                           "source_start": info["start"], "audio": old.muxed(info), "hdr": info["hdr"], "width": info["w"],
                            "segment_seconds": 0, "priority": 0}).encode()
         prep_s, prep_cpu = time.perf_counter() - old_t0, time.process_time() - cpu0
         data, timings = post(mac_url.rstrip("/") + "/convert", body, "application/json")
@@ -170,26 +202,30 @@ def one(mac_url, fixture, mode, index, label):
             # Mac4 is isolated and this harness sends only one conversion at a time.
             if bool(last.get("mode", "").startswith("source")) == (mode == "source"):
                 mac_observed = {"mac_received_mb": last.get("in_mb"), "mac_convert_s": last.get("convert_s"),
+                                "mac_upload_s": last.get("upload_s"), "mac_spawn_s": last.get("spawn_s"),
+                                "mac_response_s": last.get("response_s"), "mac_profile": last.get("profile"),
                                 "mac_source_requests": last.get("source_requests", 0),
                                 "mac_preparation": last.get("preparation"),
                                 "mac_cache_hits": last.get("source_cache_hits", 0),
                                 "mac_cached_mb": last.get("source_cached_mb", 0)}
     except (OSError, ValueError):
         pass
-    return {"fixture": fixture, "mode": mode, "case": label, "segment": index, "start_s": requested_start,
+    return {"fixture": fixture, "mode": mode, "profile": profile, "case": label, "segment": index, "start_s": requested_start,
             "length_s": length, "total_s": round(total, 4), "runners_prep_s": round(prep_s, 4),
             "runners_python_cpu_s": round(prep_cpu, 4), "source_requests": after["requests"] - before["requests"],
             "source_bytes": after["bytes"] - before["bytes"], **{k: round(v, 4) if isinstance(v, float) else v for k, v in timings.items()},
-            **mac_observed, "validation": validate(data)}
+            "payload_sha256": hashlib.sha256(body).hexdigest(), **mac_observed, "validation": validate(data, pixels=profile is not None)}
 
 
 def benchmark(opts):
     if not RUN_LOCK.acquire(False):
         return False
+    old.MUXED = bool(opts.get("muxed_audio", True))
     STATE.update(run="running", rows=[], error=None, started_at=time.time(), probes=[],
                  config={"source_block_bytes": old.SRC_BLOCK, "muxed_audio": old.MUXED,
                          "source_cache": "generated fixtures already stored on Runners",
-                         "fleet_machine": os.environ.get("FLEET_MACHINE")})
+                         "fleet_machine": os.environ.get("FLEET_MACHINE"), "profiles": opts.get("profiles"),
+                         "unique_inputs": bool(opts.get("unique_inputs")), "harness_revision": HARNESS_REVISION})
 
     def work():
         try:
@@ -202,14 +238,20 @@ def benchmark(opts):
             STATE["worker_revision"] = health.get("revision")
             if opts.get("expected_revision") and health.get("revision") != opts["expected_revision"]:
                 raise ValueError("benchmark worker revision changed")
-            modes = opts.get("modes", ["binary", "source"])
+            profiles = opts.get("profiles")
+            if profiles is not None and (not isinstance(profiles, list) or not profiles or profiles[0] != "baseline"
+                                         or len(set(profiles)) != len(profiles) or any(p not in PROFILES for p in profiles)):
+                raise ValueError("invalid profiles")
+            if profiles and any(p != "baseline" and p not in health.get("benchmark_profiles", []) for p in profiles):
+                raise ValueError("benchmark profile is not enabled on worker")
+            modes = ["binary"] if profiles else opts.get("modes", ["binary", "source"])
             if not modes or any(m not in ("binary", "source") for m in modes):
                 raise ValueError("invalid modes")
             fixtures = opts.get("fixtures", list(FIXTURES))
             if not fixtures or any(f not in FIXTURES for f in fixtures):
                 raise ValueError("invalid fixtures")
-            repeats = min(3, max(1, int(opts.get("repeats", 2))))
-            trials = min(3, max(1, int(opts.get("trials", 1))))
+            repeats = min(3, max(0, int(opts.get("repeats", 2))))
+            trials = min(5, max(1, int(opts.get("trials", 1))))
             for fixture in fixtures:
                 key = IDS[fixture]
                 probe = local_probe(key)
@@ -221,23 +263,43 @@ def benchmark(opts):
                     STATE["probes"].append({"fixture": fixture, "mode": "source", **timing,
                                             "source_bytes": after["bytes"] - before["bytes"],
                                             "source_requests": after["requests"] - before["requests"]})
-                cases = ([("startup", 0)] * trials + [("seek", 37)] * trials + [("repeat", 37)] * repeats)
+                cases = ([("startup", n * 10 if opts.get("unique_inputs") else 0) for n in range(trials)]
+                         + [("seek", 7 + n * 10 if opts.get("unique_inputs") else 37) for n in range(trials)]
+                         + [("repeat", 37)] * repeats)
                 for i, (label, segment) in enumerate(cases):
-                    # Alternate ordering so network/worker warmup does not always favor one path.
-                    for mode in (modes if i % 2 == 0 else list(reversed(modes))):
-                        row = one(mac_url, fixture, mode, segment, label)
+                    choices = [("binary", p) for p in profiles] if profiles else [(mode, None) for mode in modes]
+                    # Rotate profiles (or alternate two modes), balancing which runs first.
+                    offset = i % len(choices)
+                    choices = choices[offset:] + choices[:offset]
+                    for mode, profile in choices:
+                        row = one(mac_url, fixture, mode, segment, label, profile)
+                        row["pair_id"] = f"{fixture}:{i}:{segment}"
                         STATE["rows"].append(row)
                         print(json.dumps(row), flush=True)
             summaries = []
             for fixture in fixtures:
-                for mode in modes:
+                for mode, profile in ([("binary", p) for p in profiles] if profiles else [(m, None) for m in modes]):
                     for case in ("startup", "seek", "repeat"):
-                        rows = [r for r in STATE["rows"] if r["fixture"] == fixture and r["mode"] == mode and r["case"] == case]
+                        rows = [r for r in STATE["rows"] if r["fixture"] == fixture and r["mode"] == mode and r["case"] == case
+                                and r["profile"] == profile]
                         if rows:
-                            summaries.append({"fixture": fixture, "mode": mode, "case": case, "n": len(rows),
+                            summaries.append({"fixture": fixture, "mode": mode, "profile": profile, "case": case, "n": len(rows),
                                               "median_s": round(statistics.median(r["total_s"] for r in rows), 4),
                                               "min_s": min(r["total_s"] for r in rows), "max_s": max(r["total_s"] for r in rows)})
             STATE["summary"] = summaries
+            if profiles:
+                comparisons = []
+                for pair in sorted(set(r["pair_id"] for r in STATE["rows"])):
+                    rows = [r for r in STATE["rows"] if r["pair_id"] == pair]
+                    baseline = next(r for r in rows if r["profile"] == "baseline")
+                    for row in rows:
+                        if row["profile"] == "baseline":
+                            continue
+                        comparisons.append({"pair_id": pair, "profile": row["profile"],
+                                            "same_payload": row["payload_sha256"] == baseline["payload_sha256"],
+                                            "same_decoded_output": row["validation"] == baseline["validation"],
+                                            "latency_change_s": round(row["total_s"] - baseline["total_s"], 4)})
+                STATE["quality_comparisons"] = comparisons
             for probe in STATE["probes"]:
                 first = next(r for r in STATE["rows"] if r["fixture"] == probe["fixture"] and r["mode"] == probe["mode"] and r["case"] == "startup")
                 probe["probe_plus_first_segment_s"] = round(probe.get("wall_s", probe.get("http_s", 0)) + first["total_s"], 4)
@@ -376,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(409, {"error": "fixtures still preparing"})
                 STATE["ready"] = False
                 removed, total = 0, 0
-                # Delete only the two explicit synthetic fixture paths. Never
+                # Delete only the explicit synthetic fixture paths. Never
                 # traverse the volume or accept a filename from the request.
                 for file in FILES.values():
                     try:

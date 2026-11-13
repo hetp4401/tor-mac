@@ -1,0 +1,16 @@
+x-runner:
+  port: 8080
+  replicas: 1
+  ready: /healthz
+services:
+  server:
+    build: .
+    env_file: .env
+    ports: ["8080:8080"]
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2
+    volumes:
+      - fixtures:/tmp/tor-benchmark-fixtures
+volumes:
+  fixtures:

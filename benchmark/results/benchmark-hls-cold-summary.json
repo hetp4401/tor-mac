@@ -1,0 +1,174 @@
+{
+  "baseline_return": {
+    "trials": [
+      {
+        "file": "benchmark-hls-baseline_return-hevc_hdr_xlong-1.json",
+        "valid": true,
+        "startup": 2.29,
+        "seek": 1.8873,
+        "next3": 1.484,
+        "master": 0.8516,
+        "read": 0.37,
+        "mac": 1.42,
+        "network": 5.6641,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-baseline_return-hevc_hdr_xlong-2.json",
+        "valid": true,
+        "startup": 2.2732,
+        "seek": 2.0936,
+        "next3": 2.7392,
+        "master": 1.1863,
+        "read": 0.69,
+        "mac": 1.24,
+        "network": 7.1109,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-baseline_return-hevc_hdr_xlong-3.json",
+        "valid": true,
+        "startup": 1.8258,
+        "seek": 2.1214,
+        "next3": 3.6027,
+        "master": 0.8188,
+        "read": 0.36,
+        "mac": 1.69,
+        "network": 7.5524,
+        "target_cold": true
+      }
+    ],
+    "medians": {
+      "startup": 2.2732,
+      "seek": 2.0936,
+      "next3": 2.7392,
+      "master": 0.8516,
+      "read": 0.37,
+      "mac": 1.42,
+      "network": 7.1109
+    }
+  },
+  "candidate_no_priority": {
+    "trials": [
+      {
+        "file": "benchmark-hls-candidate_no_priority-hevc_hdr_xlong-1.json",
+        "valid": true,
+        "startup": 1.7432,
+        "seek": 1.7018,
+        "next3": 3.2793,
+        "master": 0.6344,
+        "read": 0.23,
+        "mac": 1.42,
+        "network": 6.7471,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-candidate_no_priority-hevc_hdr_xlong-2.json",
+        "valid": true,
+        "startup": 2.3064,
+        "seek": 2.4959,
+        "next3": 3.4919000000000002,
+        "master": 0.6925,
+        "read": 0.21,
+        "mac": 2.01,
+        "network": 8.2984,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-candidate_no_priority-hevc_hdr_xlong-3.json",
+        "valid": true,
+        "startup": 2.3317,
+        "seek": 1.5485,
+        "next3": 3.1538,
+        "master": 0.842,
+        "read": 0.2,
+        "mac": 1.25,
+        "network": 7.036,
+        "target_cold": true
+      }
+    ],
+    "medians": {
+      "startup": 2.3064,
+      "seek": 1.7018,
+      "next3": 3.2793,
+      "master": 0.6925,
+      "read": 0.21,
+      "mac": 1.42,
+      "network": 7.036
+    }
+  },
+  "candidate": {
+    "trials": [
+      {
+        "file": "benchmark-hls-candidate-hevc_hdr_xlong-1.json",
+        "valid": true,
+        "startup": 1.5714,
+        "seek": 1.6333,
+        "next3": 4.8492,
+        "master": 0.7423,
+        "read": 0.4,
+        "mac": 1.18,
+        "network": 8.0578,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-candidate-hevc_hdr_xlong-2.json",
+        "valid": true,
+        "startup": 1.6203,
+        "seek": 1.5559,
+        "next3": 3.1736,
+        "master": 0.7107,
+        "read": 0.21,
+        "mac": 1.18,
+        "network": 6.3526,
+        "target_cold": true
+      }
+    ],
+    "medians": {
+      "startup": 1.5958,
+      "seek": 1.5946,
+      "next3": 4.0114,
+      "master": 0.7265,
+      "read": 0.305,
+      "mac": 1.18,
+      "network": 7.2052
+    }
+  },
+  "candidate_short_priority": {
+    "trials": [
+      {
+        "file": "benchmark-hls-candidate_short_priority-hevc_hdr_xlong-1.json",
+        "valid": true,
+        "startup": 2.7016,
+        "seek": 1.8372,
+        "next3": 4.0919,
+        "master": 0.7351,
+        "read": 0.14,
+        "mac": 1.25,
+        "network": 8.6373,
+        "target_cold": true
+      },
+      {
+        "file": "benchmark-hls-candidate_short_priority-hevc_hdr_xlong-2.json",
+        "valid": false,
+        "startup": 8.3867,
+        "seek": 8.4605,
+        "next3": 2.6115,
+        "master": 0.7204,
+        "read": null,
+        "mac": null,
+        "network": 19.4634,
+        "target_cold": true
+      }
+    ],
+    "medians": {
+      "startup": 2.7016,
+      "seek": 1.8372,
+      "next3": 4.0919,
+      "master": 0.7351,
+      "read": 0.14,
+      "mac": 1.25,
+      "network": 8.6373
+    }
+  }
+}
