@@ -7,6 +7,7 @@ unnoticed concurrent deployment from being overwritten. --apply is explicit.
 import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import lzma
 import os
@@ -62,6 +63,13 @@ def main():
         ap.error('app version changed; inspect the current deployment before retrying')
     source = args.source.read_bytes()
     compile(source, str(args.source), 'exec')
+    builder = Path(__file__).with_name('web') / 'build.py'
+    if builder.is_file() and args.source.resolve() == Path(__file__).with_name('tor.py').resolve():
+        module_spec = importlib.util.spec_from_file_location('tor_web_build', builder)
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        if module.bundle(source.decode()) != source.decode():
+            ap.error('web sources changed; run python3 runners/web/build.py before deploying')
     compose, revision = compose_source(project['compose'], source)
     spec = {k: project[k] for k in ('files', 'port', 'replicas', 'region', 'regions', 'spreadTags') if k in project}
     spec.update(compose=compose, env={'MAC_INPUT_MODE': args.mode})

@@ -1,0 +1,76 @@
+<section id="v-player" class="hidden m-inline" tabindex="-1" aria-label="Player">
+  <div class="pframe" id="pFrame">
+    <video id="vid" playsinline preload="auto" x-webkit-airplay="allow"></video>
+    <img class="pcover" id="pCover" alt="">
+    <canvas class="psnap hidden" id="pSnap"></canvas>
+    <div class="pdim" id="pDim"></div>
+    <div class="pgest" id="pGest"></div>
+    <div class="prip l" id="pRipL" aria-hidden="true"><div class="rc"><span class="arr"></span><span class="n"></span></div></div>
+    <div class="prip r" id="pRipR" aria-hidden="true"><div class="rc"><span class="arr"></span><span class="n"></span></div></div>
+    <div class="pwhere" id="pWhere"></div>
+    <div class="pctl" id="pCtl">
+      <div class="ptop">
+        <button class="gb" id="pBack" aria-label="Back"></button>
+        <div class="pttl"><b id="pTitle"></b><span id="pSub"></span></div>
+        <div class="pgrp">
+          <button class="gb hidden" id="pAir" aria-label="AirPlay"></button>
+          <button class="gb hidden" id="pPip" aria-label="Picture in Picture"></button>
+        </div>
+      </div>
+      <div class="pmid">
+        <button class="gb l" id="pB10" aria-label="Back 10 seconds"></button>
+        <button class="gb xl" id="pPlay" aria-label="Pause"></button>
+        <button class="gb l" id="pF10" aria-label="Forward 10 seconds"></button>
+      </div>
+      <div class="pend" aria-hidden="true">Watch again</div>
+      <div class="pbot">
+        <div class="prow">
+          <div class="vol hidden" id="pVolBox"><button class="gb bare" id="pMute" aria-label="Mute"></button>
+            <div class="vsl" id="pVol" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="trk"><i id="pVolFill"></i></div></div></div>
+          <span class="sp"></span>
+          <button class="gp hidden" id="pAudio" aria-haspopup="menu" aria-label="Audio"><span class="nm" id="pAudioName"></span></button>
+          <button class="gp acc hidden" id="pNextBtn"><span>Next episode</span></button>
+          <button class="gb" id="pMore" aria-haspopup="menu" aria-label="More"></button>
+          <button class="gb" id="pFs" aria-label="Full screen"></button>
+        </div>
+        <div class="pseek">
+          <span class="ptime" id="pCur">0:00</span>
+          <div class="scrub" id="pScrub" role="slider" tabindex="0" aria-label="Position" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            <div class="trk" id="pTrk"><i class="fill" id="pFill"></i></div>
+            <div class="kpos" id="pKpos"><i class="knob"></i></div>
+            <div class="bpos" id="pBpos"><span class="bub" id="pBub"></span></div>
+          </div>
+          <span class="ptime r" id="pLeft"></span>
+          <button class="gb bare fsb" id="pFs2" aria-label="Full screen"></button>
+        </div>
+      </div>
+    </div>
+    <div class="pbusy" id="pBusy" role="status" aria-live="polite"><span class="aspin"></span><span class="cap" id="pBusyCap"></span></div>
+    <div class="phud" id="pHud" aria-hidden="true"></div>
+    <button class="gp presume hidden" id="pRestart"><span>Start from the beginning</span></button>
+    <div class="perr hidden" id="pErr" role="alert"><b id="pErrT"></b><p id="pErrP"></p>
+      <div class="acts"><button class="pri" id="pRetry">Try again</button><button id="pOther">Other versions</button></div></div>
+    <div class="pupn hidden" id="pUpn"><img id="pUpnImg" alt=""><div class="t"><small>Next episode</small><b id="pUpnT"></b>
+      <button class="upgo" id="pUpnGo"><span>Play</span></button></div><button class="x" id="pUpnX" aria-label="Dismiss"></button></div>
+    <div class="pmenu" id="pMenu" role="menu"></div>
+  </div>
+  <div class="pdock" id="pDock">
+    <div class="native-actions hidden" id="pNativeActions" aria-label="Playback options">
+      <button class="db" id="pNativeBack" type="button">Back</button>
+      <button class="db acc hidden" id="pNativePlay" type="button">Play</button>
+      <button class="db" id="pNativeFullscreen" type="button">Full screen</button>
+      <button class="db hidden" id="pNativePip" type="button">Picture in Picture</button>
+      <button class="db hidden" id="pNativeAirplay" type="button">AirPlay</button>
+      <p class="native-status" id="pNativeStatus" role="status" aria-live="polite"></p>
+    </div>
+    <h1 id="pEpName"></h1><div class="sub" id="pEpSub"></div>
+    <div class="dacts">
+      <button class="db acc hidden" id="dNext"><span>Next episode</span></button>
+      <div class="db hidden" id="dAudio"><span class="nm" id="dAudioName"></span><select id="pLang" aria-label="Audio"></select></div>
+      <button class="db" id="dCopy" aria-label="Copy stream link"><span>Copy link</span></button>
+    </div>
+    <div class="pver" id="pVerBox"><div class="hd"><div class="lbl">Playing</div><button class="chg" id="pChange">Other versions</button></div><div id="pVer"></div></div>
+    <div class="upnext hidden" id="pNext"><div class="lbl">Up next</div><div id="pNextEp"></div></div>
+  </div>
+</section>
+<button class="pip-return hidden" id="pPipReturn" type="button" aria-label="Return to playing video">Return to video</button>
