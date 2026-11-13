@@ -2,6 +2,7 @@
 import concurrent.futures
 import contextlib
 import http.client
+import socket
 import threading
 import time
 import unittest
@@ -190,6 +191,60 @@ class SourceCacheTests(unittest.TestCase):
         self.assertFalse(thread.is_alive())
         self.assertLess(time.monotonic() - start, 1)
         self.assertTrue(failures); self.assertFalse(source.active); self.assertEqual(media.CACHE.bytes, 0)
+
+    def test_cancellation_leaves_http_response_close_to_the_reader(self):
+        """Force cancellation between HTTPResponse.read's EOF and _close_conn."""
+        client, server = socket.socketpair()
+        response = http.client.HTTPResponse(client)
+        server.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n')
+        response.begin()
+        source = self.source()
+        opened = media.OpenedResponse(source, response)
+        source.active.add(opened)
+        entered, release = threading.Event(), threading.Event()
+        original_close = response._close_conn
+        failures, reader_identity = [], []
+
+        def paused_close():
+            if threading.get_ident() == reader_identity[0]:
+                entered.set()
+                if not release.wait(2):
+                    raise TimeoutError('test did not release EOF cleanup')
+            original_close()
+
+        response._close_conn = paused_close
+        def read():
+            reader_identity.append(threading.get_ident())
+            try:
+                with opened:
+                    opened.read(1)
+            except Exception as error:
+                failures.append(error)
+        thread = threading.Thread(target=read)
+        try:
+            thread.start()
+            source.cancel()
+            self.assertTrue(entered.wait(1), 'socket shutdown must unblock the reader')
+            self.assertIsNotNone(response.fp, 'cancelling thread must not close the response under its reader')
+            release.set(); thread.join(1)
+            self.assertFalse(thread.is_alive())
+            self.assertFalse(failures, failures)
+            self.assertFalse(source.active)
+        finally:
+            release.set(); thread.join(2)
+            response.close(); client.close(); server.close()
+
+    def test_cancelled_open_releases_a_response_that_has_no_reader(self):
+        source = self.source()
+        original = source.opener.open
+        def cancelled_open(*args, **kwargs):
+            response = original(*args, **kwargs)
+            source.cancel()
+            return response
+        source.opener.open = cancelled_open
+        with self.assertRaisesRegex(media.SourceError, 'cancelled'):
+            source.open(method='HEAD')
+        self.assertFalse(source.active)
 
     def test_origin_api_refuses_open_ended_or_oversized_get(self):
         source = self.source()

@@ -220,11 +220,34 @@ class SourceConversion(unittest.TestCase):
             mac.jobs['draining'] = True
             self.assertEqual(call('/convert')[0], 503)
             mac.jobs['draining'] = False
+
             self.assertEqual(mac.jobs['n'], 0)
         finally:
             server.shutdown(); server.server_close()
             mac.Source, mac.KEY = original_source, original_key
             mac.jobs['draining'] = False
+
+    def test_binary_http_reports_stage_timing_and_releases_its_slot(self):
+        with mock.patch.object(mac, 'KEY', 'worker-timing-test'):
+            server = ThreadingHTTPServer(('127.0.0.1', 0), mac.Handler)
+            server.daemon_threads = True
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                connection = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=15)
+                connection.request('POST', '/convert?t=1.5&l=1&s=1.5&a=1&w=320', FixtureHandler.data,
+                                   {'X-Mac-Key': 'worker-timing-test', 'Content-Type': 'application/octet-stream'})
+                response = connection.getresponse()
+                data = response.read()
+                self.assertEqual(response.status, 200, data[:200])
+                timings = dict(part.strip().split(';dur=') for part in response.getheader('Server-Timing').split(','))
+                self.assertEqual(set(timings), {'upload', 'process', 'spawn'})
+                self.assertTrue(all(float(value) >= 0 for value in timings.values()))
+                self.assertGreater(float(timings['process']), float(timings['spawn']))
+                self.assertEqual(data[0], 0x47)
+                connection.close()
+            finally:
+                server.shutdown(); server.server_close()
+            self.assertEqual(mac.jobs['n'], 0)
 
     def test_videotoolbox_remote_seek_when_available(self):
         if self.old_engine != 'videotoolbox':

@@ -214,10 +214,13 @@ def gone(conn):
         return True
 
 
-def run(cmd, body, conn, timeout=120):
+def run(cmd, body, conn, timeout=120, timing=None):
     """cmd run on body: (its exit code, its output, its errors, whether it ran out of time), or None when the caller on
     conn hung up meanwhile (it's ended then)."""
+    began = time.perf_counter()
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if timing is not None:
+        timing["spawn_s"] = time.perf_counter() - began
     got = {}
 
     def talk():
@@ -247,6 +250,8 @@ def run(cmd, body, conn, timeout=120):
         p.wait(timeout=10)
     except subprocess.TimeoutExpired:  # (killed, and still there: a hung encoder; its place isn't kept for it)
         stuck()
+    if timing is not None:
+        timing["process_s"] = time.perf_counter() - began
     return p.returncode, got.get("out") or b"", got.get("err") or b"", bool(got.get("late"))
 
 
@@ -264,13 +269,15 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def send(self, code, body, ctype="application/json"):
+    def send(self, code, body, ctype="application/json", headers=None):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         if code == 503:
             self.send_header("Retry-After", "1")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -313,7 +320,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True  # (its body unread: the connection isn't used again)
             return self.send(503, {"error": busy})
         try:
-            t0 = time.time()
+            t0 = time.perf_counter()
             try:
                 body = self.rfile.read(size)
             except OSError:
@@ -322,9 +329,10 @@ class Handler(BaseHTTPRequestHandler):
                 jobs["ended"] += 1
                 self.close_connection = True
                 return
-            t1 = time.time()
-            out = run(command(t, l, s, a, hdr, w, k), body, self.connection)
-            took = time.time() - t1
+            t1 = time.perf_counter()
+            timing = {}
+            out = run(command(t, l, s, a, hdr, w, k), body, self.connection, timing=timing)
+            took = time.perf_counter() - t1
             if out is None:  # (the caller went: no one to answer)
                 jobs["ended"] += 1
                 self.close_connection = True
@@ -337,10 +345,14 @@ class Handler(BaseHTTPRequestHandler):
                 jobs["failed"] += 1
                 return self.send(500, {"error": f"ffmpeg (exit {code}): {err.decode(errors='replace')[-300:]}"})
             jobs["done"] += 1
-            recent.append({"at": int(time.time()), "in_mb": round(size / 1e6, 1), "upload_s": round(t1 - t0, 2), "convert_s": round(took, 2),
-                           "out_mb": round(len(data) / 1e6, 2), "waits": waits})
+            record = {"at": int(time.time()), "in_mb": round(size / 1e6, 1), "upload_s": round(t1 - t0, 4), "convert_s": round(took, 4),
+                      "out_mb": round(len(data) / 1e6, 2), "waits": waits,
+                      "spawn_s": round(timing.get("spawn_s", 0), 5)}
+            recent.append(record)
             del recent[:-50]
-            self.send(200, data, "video/mp2t")
+            sending = time.perf_counter()
+            self.send(200, data, "video/mp2t", {"Server-Timing": f"upload;dur={(t1 - t0) * 1000:.3f}, process;dur={took * 1000:.3f}, spawn;dur={timing.get('spawn_s', 0) * 1000:.3f}"})
+            record["response_s"] = round(time.perf_counter() - sending, 4)
         finally:
             with lock:
                 jobs["n"] -= 1

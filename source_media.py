@@ -106,13 +106,15 @@ class OpenedResponse:
                 self.source.active.discard(self)
 
     def interrupt(self):
-        # close() alone can wait for BufferedReader's lock held by a blocked read.
+        # Wake the reader without touching HTTPResponse.fp. HTTPResponse.read
+        # closes that object at EOF; concurrent close() can race _close_conn
+        # (and can also wait on BufferedReader's lock). The context owner closes
+        # the response after the interrupted read unwinds.
         raw = getattr(getattr(self.response, 'fp', None), 'raw', None)
         sock = getattr(raw, '_sock', None)
         if sock is not None:
             with contextlib.suppress(OSError):
                 sock.shutdown(socket.SHUT_RDWR)
-        self.close()
 
 
 class Source:
@@ -190,6 +192,9 @@ class Source:
             self.active.add(response)
         if self.stop.is_set():
             response.interrupt()
+            # No reader/context owns this response yet: open() is raising
+            # instead of returning it, so this thread must release it.
+            response.close()
             raise SourceError("source request cancelled")
         return response
 
